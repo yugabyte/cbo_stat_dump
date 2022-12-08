@@ -19,7 +19,6 @@ import psycopg2
 import argparse
 import time
 import os, platform, subprocess, sys
-import json
 from pathlib import Path
 import shutil
 import re
@@ -27,7 +26,8 @@ import re
 QUERY_FILE_NAME = 'query.sql'
 DDL_FILE_NAME = 'ddl.sql'
 QUERY_PLAN_FILE_NAME = 'query_plan.txt'
-PG_STATISTIC_FILE_NAME = 'pg_statistic.json'
+STATISTICS_FILE_NAME = 'statistics.json'
+PG_CLASS_FILE_NAME = 'pg_class.json'
 DEFAULT_OUT_DIR_PREFIX = 'query_planner_data_'
 
 def parse_cmd_line():
@@ -35,11 +35,11 @@ def parse_cmd_line():
         prog = 'export_query_planner_data',
         description = 'Exports statistics and other data to reproduce query plan'
     )
-    parser.add_argument('-u', '--user', required=True, help='YugabyteDB username')
-    parser.add_argument('-p', '--password', help='Password')
     parser.add_argument('-H', '--host', help='Hostname or IP address')
     parser.add_argument('-P', '--port', help='Port number, default 5433')
     parser.add_argument('-D', '--database', required=True, help='Database name')
+    parser.add_argument('-u', '--user', required=True, help='YugabyteDB username')
+    parser.add_argument('-p', '--password', help='Password')
     parser.add_argument('-o', '--out_dir', default='/tmp/' + DEFAULT_OUT_DIR_PREFIX +time.strftime("%Y%m%d-%H%M%S"), help='Output directory')
     parser.add_argument('-q', '--sql_file')
 
@@ -69,15 +69,6 @@ def connect_database(connectionDict):
     cursor = conn.cursor()
     return conn, cursor
 
-def result_iter(cursor, arraysize=1000):
-    'An iterator that uses fetchmany to keep memory usage down'
-    while True:
-        results = cursor.fetchmany(arraysize)
-        if not results:
-            break
-        for result in results:
-            yield result
-
 def json_search_relation_name_recurse(query_plan_json):
     relations = []
     if 'Plans' in query_plan_json:
@@ -106,36 +97,45 @@ def get_relation_oids(cursor, relation_names):
         relation_oids.append(cursor.fetchone()[0])
     return relation_oids
 
+def get_process_output(cmd, output_file_name):
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=os.environ)
+    outmsg, errormsg = p.communicate()
+    if p.returncode != 0:
+        sys.stderr.writelines('\nError when executing the following command.\n\n' + cmd + '\n' + errormsg.decode() + '\n\n')
+        sys.exit(1)
+    with open(output_file_name, 'a') as output_file:
+        output_file.write("%s" % outmsg.decode('UTF-8'))
+
 def extract_ddl(cursor, connectionDict, relation_names, output_dir):
+    if not shutil.which("ysql_dump"):
+        sys.stderr.writelines("ysql_dump binary not found.\n\n")
+        sys.exit(1)
+    
     ddl_file_name = output_dir + '/' + DDL_FILE_NAME
     print("Exporting DDL to %s" % ddl_file_name)
     ddl_tmp_file_name = ddl_file_name + '.tmp'
     
-    for relation_name in relation_names:
-        ysql_connection_str = "-d %s -h %s -p %s -U %s" % (connectionDict["database"], connectionDict["host"], connectionDict["port"], connectionDict["user"])
-        if connectionDict["password"] is not None:
-            ysql_connection_str = ysql_connection_str + "-W %s" % (connectionDict["password"])
-        ysql_dump_cmd = "ysql_dump %s -t %s -s" % (ysql_connection_str, relation_name)
-        # print (ysql_dump_cmd)
-        p = subprocess.Popen(ysql_dump_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=os.environ)
+    ysql_connection_str = "-d %s -h %s -p %s -U %s" % (connectionDict["database"], connectionDict["host"], connectionDict["port"], connectionDict["user"])
+    if connectionDict["password"] is not None:
+        ysql_connection_str = ysql_connection_str + "-W %s" % (connectionDict["password"])
 
-        outmsg, errormsg = p.communicate()
-        if p.returncode != 0:
-            sys.stderr.writelines('\nError when executing function gp_dump_query_oids.\n\n' + errormsg.decode() + '\n\n')
-            sys.exit(1)
-        with open(ddl_tmp_file_name, 'w') as ddl_tmp_file:
-            ddl_tmp_file.write("%s" % outmsg.decode('UTF-8'))
+    if relation_names:
+        for relation_name in relation_names:
+            ysql_dump_cmd = "ysql_dump %s -t %s -s" % (ysql_connection_str, relation_name)
+            get_process_output(ysql_dump_cmd, ddl_tmp_file_name)
+    else:
+        ysql_dump_cmd = "ysql_dump %s -s" % (ysql_connection_str)
+        get_process_output(ysql_dump_cmd, ddl_tmp_file_name)
 
-        with open(ddl_file_name, 'a') as ddl_file:
-            with open(ddl_tmp_file_name, 'r') as ddl_tmp_file:
-                for line in ddl_tmp_file:
-                    if line.strip():
-                        m = re.match(r"(?:^--)|(?:^SET)|(?:^SELECT pg_catalog)|(?:^ALTER TABLE [\w\.]+ OWNER TO)", line)
-                        if m is None:
-                            ddl_file.write(line)
-            ddl_file.write('\n')
+    with open(ddl_file_name, 'a') as ddl_file:
+        with open(ddl_tmp_file_name, 'r') as ddl_tmp_file:
+            for line in ddl_tmp_file:
+                if line.strip():
+                    m = re.match(r"(?:^--)|(?:^SET)|(?:^SELECT pg_catalog)|(?:^ALTER TABLE [\w\.]+ OWNER TO)", line)
+                    if m is None:
+                        ddl_file.write(line)
+        ddl_file.write('\n')
 
-    
 def export_query_file(sql_file, out_dir):
     query_file_name = out_dir + '/' + QUERY_FILE_NAME
     print("Exporting query file to %s" % query_file_name)
@@ -154,17 +154,46 @@ def export_query_plan(cursor, sql_file, out_dir):
         for tuple in query_plan:
             query_plan_file.write(tuple[0] + '\n')
 
-def export_pg_statistic(cursor, relation_names, out_dir):
-    pg_statistic_file_name = out_dir + '/' + PG_STATISTIC_FILE_NAME
-    print("Exporting pg_statistic to file %s" % pg_statistic_file_name)
-
-    relation_names_str = ', '.join(['\'{}\''.format(relation_name) for relation_name in relation_names])
+def load_query_planner_sim_extension(cursor):
     query = """
-        SELECT row_to_json(t) FROM 
+        CREATE EXTENSION IF NOT EXISTS query_planner_sim;
+    """
+    cursor.execute(query)
+
+def unload_query_planner_sim_extension(cursor):
+    query = """
+        DROP EXTENSION IF EXISTS query_planner_sim;
+    """
+    cursor.execute(query)
+
+
+def result_iter(cursor, arraysize=1000):
+    'An iterator that uses fetchmany to keep memory usage down'
+    while True:
+        results = cursor.fetchmany(arraysize)
+        if not results:
+            break
+        for result in results:
+            yield result
+
+def export_statistics(cursor, relation_names, out_dir):
+    statistics_file_name = out_dir + '/' + STATISTICS_FILE_NAME
+    print("Exporting data from pg_statistic and pg_class to file %s" % statistics_file_name)
+    load_query_planner_sim_extension(cursor)
+
+    relation_names_filter = ""
+    if relation_names:
+        relation_names_str = ', '.join(['\'{}\''.format(relation_name) for relation_name in relation_names])
+        relation_names_filter = " and c.relname in (%s) " % relation_names_str
+
+    query = """
+        COPY (SELECT row_to_json(t) FROM 
             (SELECT 
                 c.relname relname, 
                 a.attname attname, 
                 a.atttypid atttypid,
+                n.nspname nspname,
+                c.reltuples,
                 s.stainherit,
                 s.stanullfrac,
                 s.stawidth,
@@ -183,28 +212,28 @@ def export_pg_statistic(cursor, relation_names, out_dir):
                 to_schema_qualified_type(anyarray_elemtype(s.stavalues4)) stavalues4_type,
                 to_schema_qualified_type(anyarray_elemtype(s.stavalues5)) stavalues5_type
                 FROM pg_class c 
-                    JOIN pg_namespace n on c.relnamespace = n.oid and n.nspname = 'public' and c.relname in (%s)
+                    JOIN pg_namespace n on c.relnamespace = n.oid and n.nspname = 'public' %s
                     JOIN pg_statistic s ON s.starelid = c.oid 
-                    JOIN pg_attribute a ON c.oid = a.attrelid AND s.staattnum = a.attnum) t;
-        """ % relation_names_str
+                    JOIN pg_attribute a ON c.oid = a.attrelid AND s.staattnum = a.attnum) t) TO '%s'
+        """ % (relation_names_filter, statistics_file_name)
+
     cursor.execute(query)
-    statistics = cursor.fetchall()
-    with open(pg_statistic_file_name, 'w') as pg_statistic_file:
-        for tuple in statistics:
-            pg_statistic_file.write(json.dumps(tuple[0]) + '\n')
+
+    unload_query_planner_sim_extension(cursor)
 
 def main():
     args = parse_cmd_line()
     connectionDict = get_connection_dict(args)
     conn, cursor = connect_database(connectionDict)
     Path(args.out_dir).mkdir(parents=True, exist_ok=True)
+    out_dir_abs_path = os.path.abspath(args.out_dir)
     relation_names = []
     if args.sql_file is not None:
         relation_names = get_relation_names_in_query(cursor, args.sql_file)
-        # export_query_file(args.sql_file, args.out_dir)
-        # extract_ddl(cursor, connectionDict, relation_names, args.out_dir)
-        # export_query_plan(cursor, args.sql_file, args.out_dir)
-    export_pg_statistic(cursor, relation_names, args.out_dir)
+        export_query_file(args.sql_file, out_dir_abs_path)
+        export_query_plan(cursor, args.sql_file, out_dir_abs_path)
+    extract_ddl(cursor, connectionDict, relation_names, out_dir_abs_path)
+    export_statistics(cursor, relation_names, out_dir_abs_path)
 
 if __name__ == "__main__":
     main()

@@ -24,6 +24,29 @@ import shutil
 import re
 import json
 
+def get_connection_dict(args):
+    envOpts = os.environ
+    host = args.host or platform.node();
+    port = args.port or ('PGPORT' in envOpts and envOpts['PGPORT']) or '5433'
+    user = args.user
+    password = args.password
+    db = args.database;
+    print ("Connecting to database host=%s, port=%s, user=%s, db=%s" % (host, port, user, db))
+
+    connectionDict = {
+        'host': host,
+        'port': port,
+        'user': user,
+        'password': password,
+        'database': db
+    }
+    return connectionDict
+
+def connect_database(connectionDict):
+    conn = psycopg2.connect(**connectionDict)
+    cursor = conn.cursor()
+    return conn, cursor
+
 QUERY_FILE_NAME = 'query.sql'
 DDL_FILE_NAME = 'ddl.sql'
 QUERY_PLAN_FILE_NAME = 'query_plan.txt'
@@ -48,29 +71,6 @@ def parse_cmd_line():
 
     args = parser.parse_args()
     return args
-
-def get_connection_dict(args):
-    envOpts = os.environ
-    host = args.host or platform.node();
-    port = args.port or ('PGPORT' in envOpts and envOpts['PGPORT']) or '5433'
-    user = args.user
-    password = args.password
-    db = args.database;
-    print ("Connecting to database host=%s, port=%s, user=%s, db=%s" % (host, port, user, db))
-
-    connectionDict = {
-        'host': host,
-        'port': port,
-        'user': user,
-        'password': password,
-        'database': db
-    }
-    return connectionDict
-
-def connect_database(connectionDict):
-    conn = psycopg2.connect(**connectionDict)
-    cursor = conn.cursor()
-    return conn, cursor
 
 def json_search_relation_name_recurse(query_plan_json):
     relations = []

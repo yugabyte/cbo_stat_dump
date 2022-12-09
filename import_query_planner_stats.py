@@ -6,27 +6,8 @@ export_query_planner_data utility
 
 import psycopg2
 import argparse
-import time
-import os, platform, subprocess, sys
-from pathlib import Path
-import shutil
-import re
+import os, platform
 import json
-
-def parse_cmd_line():
-    parser = argparse.ArgumentParser(
-        prog = 'export_query_planner_data',
-        description = 'Exports statistics and other data to reproduce query plan'
-    )
-    parser.add_argument('-H', '--host', help='Hostname or IP address')
-    parser.add_argument('-P', '--port', help='Port number, default 5433')
-    parser.add_argument('-D', '--database', required=True, help='Database name')
-    parser.add_argument('-u', '--user', required=True, help='YugabyteDB username')
-    parser.add_argument('-p', '--password', help='Password')
-    parser.add_argument('-s', '--stat_file', required=True, help='JSON file with table statistics')
-    
-    args = parser.parse_args()
-    return args
 
 def get_connection_dict(args):
     envOpts = os.environ
@@ -50,6 +31,21 @@ def connect_database(connectionDict):
     conn = psycopg2.connect(**connectionDict)
     cursor = conn.cursor()
     return conn, cursor
+
+def parse_cmd_line():
+    parser = argparse.ArgumentParser(
+        prog = 'export_query_planner_data',
+        description = 'Exports statistics and other data to reproduce query plan'
+    )
+    parser.add_argument('-H', '--host', help='Hostname or IP address')
+    parser.add_argument('-P', '--port', help='Port number, default 5433')
+    parser.add_argument('-D', '--database', required=True, help='Database name')
+    parser.add_argument('-u', '--user', required=True, help='YugabyteDB username')
+    parser.add_argument('-p', '--password', help='Password')
+    parser.add_argument('-s', '--stat_file', required=True, help='JSON file with table statistics')
+    
+    args = parser.parse_args()
+    return args
 
 def update_pg_statistic(cursor, stat_json):
     columnTypes = { "stainherit": "boolean",

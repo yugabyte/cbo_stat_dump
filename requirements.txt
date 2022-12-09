@@ -1,0 +1,2 @@
+psycopg2==2.9.5
+psycopg2-yugabytedb==2.9.3.post0

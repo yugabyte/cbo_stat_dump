@@ -22,6 +22,7 @@ import os, platform, subprocess, sys
 from pathlib import Path
 import shutil
 import re
+import json
 
 QUERY_FILE_NAME = 'query.sql'
 DDL_FILE_NAME = 'ddl.sql'
@@ -29,6 +30,8 @@ QUERY_PLAN_FILE_NAME = 'query_plan.txt'
 STATISTICS_FILE_NAME = 'statistics.json'
 PG_CLASS_FILE_NAME = 'pg_class.json'
 DEFAULT_OUT_DIR_PREFIX = 'query_planner_data_'
+
+STATISTICS_FETCH_ROWS_SIZE = 1000
 
 def parse_cmd_line():
     parser = argparse.ArgumentParser(
@@ -154,72 +157,65 @@ def export_query_plan(cursor, sql_file, out_dir):
         for tuple in query_plan:
             query_plan_file.write(tuple[0] + '\n')
 
-def load_query_planner_sim_extension(cursor):
-    query = """
-        CREATE EXTENSION IF NOT EXISTS query_planner_sim;
-    """
-    cursor.execute(query)
-
-def unload_query_planner_sim_extension(cursor):
-    query = """
-        DROP EXTENSION IF EXISTS query_planner_sim;
-    """
-    cursor.execute(query)
-
-
-def result_iter(cursor, arraysize=1000):
-    'An iterator that uses fetchmany to keep memory usage down'
-    while True:
-        results = cursor.fetchmany(arraysize)
-        if not results:
-            break
-        for result in results:
-            yield result
-
 def export_statistics(cursor, relation_names, out_dir):
     statistics_file_name = out_dir + '/' + STATISTICS_FILE_NAME
     print("Exporting data from pg_statistic and pg_class to file %s" % statistics_file_name)
-    load_query_planner_sim_extension(cursor)
 
     relation_names_filter = ""
     if relation_names:
         relation_names_str = ', '.join(['\'{}\''.format(relation_name) for relation_name in relation_names])
         relation_names_filter = " and c.relname in (%s) " % relation_names_str
 
+    # We fetch everything from pg_statistic except starelid and staattnum
     query = """
-        COPY (SELECT row_to_json(t) FROM 
+        SELECT row_to_json(t) FROM 
             (SELECT 
                 c.relname relname, 
                 a.attname attname, 
-                a.atttypid atttypid,
+                t.typname typname,
                 n.nspname nspname,
                 c.reltuples,
                 s.stainherit,
                 s.stanullfrac,
                 s.stawidth,
                 s.stadistinct,
-                s.stakind1, s.stakind2, s.stakind3, s.stakind4, s.stakind5,
-                quote_literal(to_schema_qualified_operator(s.staop1)) staop1_,
-                quote_literal(to_schema_qualified_operator(s.staop2)) staop2_,
-                quote_literal(to_schema_qualified_operator(s.staop3)) staop3_,
-                quote_literal(to_schema_qualified_operator(s.staop4)) staop4_,
-                quote_literal(to_schema_qualified_operator(s.staop5)) staop5_,
-                s.stanumbers1, s.stanumbers2, s.stanumbers3, s.stanumbers4, s.stanumbers5,
-                s.stavalues1, s.stavalues2, s.stavalues3, s.stavalues4, s.stavalues5,
-                to_schema_qualified_type(anyarray_elemtype(s.stavalues1)) stavalues1_type,
-                to_schema_qualified_type(anyarray_elemtype(s.stavalues2)) stavalues2_type,
-                to_schema_qualified_type(anyarray_elemtype(s.stavalues3)) stavalues3_type,
-                to_schema_qualified_type(anyarray_elemtype(s.stavalues4)) stavalues4_type,
-                to_schema_qualified_type(anyarray_elemtype(s.stavalues5)) stavalues5_type
+                s.stakind1,
+                s.stakind2,
+                s.stakind3,
+                s.stakind4,
+                s.stakind5,
+                s.staop1,
+                s.staop2,
+                s.staop3,
+                s.staop4,
+                s.staop5,
+                s.stanumbers1,
+                s.stanumbers2,
+                s.stanumbers3,
+                s.stanumbers4,
+                s.stanumbers5,
+                s.stavalues1,
+                s.stavalues2,
+                s.stavalues3,
+                s.stavalues4,
+                s.stavalues5
                 FROM pg_class c 
                     JOIN pg_namespace n on c.relnamespace = n.oid and n.nspname = 'public' %s
                     JOIN pg_statistic s ON s.starelid = c.oid 
-                    JOIN pg_attribute a ON c.oid = a.attrelid AND s.staattnum = a.attnum) t) TO '%s'
-        """ % (relation_names_filter, statistics_file_name)
+                    JOIN pg_attribute a ON c.oid = a.attrelid AND s.staattnum = a.attnum
+                    JOIN pg_type t ON a.atttypid = t.oid) t
+        """ % (relation_names_filter)
 
     cursor.execute(query)
 
-    unload_query_planner_sim_extension(cursor)
+    with open(statistics_file_name, 'w') as statistics_file:
+        while True:
+            statistics_rows = cursor.fetchmany(STATISTICS_FETCH_ROWS_SIZE)
+            if not statistics_rows:
+                break
+
+            for row in statistics_rows:
+                statistics_file.write(json.dumps(row[0]) + '\n')
 
 def main():
     args = parse_cmd_line()

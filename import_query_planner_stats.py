@@ -11,6 +11,7 @@ import os, platform, subprocess, sys
 from pathlib import Path
 import shutil
 import re
+import json
 
 def parse_cmd_line():
     parser = argparse.ArgumentParser(
@@ -50,26 +51,74 @@ def connect_database(connectionDict):
     cursor = conn.cursor()
     return conn, cursor
 
-def load_query_planner_sim_extension(cursor):
+def update_pg_statistic(cursor, stat_json):
+    columnTypes = { "stainherit": "boolean",
+                    "stanullfrac": "real",
+                    "stawidth": "integer",
+                    "stadistinct": "real",
+                    "stakind1": "smallint",
+                    "stakind2": "smallint",
+                    "stakind3": "smallint",
+                    "stakind4": "smallint",
+                    "stakind5": "smallint",
+                    "staop1": "oid",
+                    "staop2": "oid",
+                    "staop3": "oid",
+                    "staop4": "oid",
+                    "staop5": "oid",
+                    "stanumbers1": "real[]",
+                    "stanumbers2": "real[]",
+                    "stanumbers3": "real[]",
+                    "stanumbers4": "real[]",
+                    "stanumbers5": "real[]"}
+
+    stavaluesType = stat_json["typname"]
+    if (stavaluesType.startswith('_')):
+        stavaluesType += '[]'
+    for i in range (1, 5):
+        columnTypes["stavalues" + str(i)] = stavaluesType
+
+    columnValues = ""
+    for columnName, columnType in columnTypes.items():
+        columnValues += ", " + str(stat_json[columnName]) + "::" + columnType        
+
+    starelid = "'%s.%s'::regclass" % (stat_json["nspname"], stat_json["relname"])
+    # Find staattnum from starelid and "attname" from statistics
+    query = "SELECT a.attnum FROM pg_attribute a WHERE a.attrelid = %s and a.attname = '%s'" % (starelid, stat_json["attname"])
+    cursor.execute(query)
+    staattnum = cursor.fetchone()[0]
     query = """
-        CREATE EXTENSION IF NOT EXISTS query_planner_sim;
-    """
+        DELETE FROM pg_statistic WHERE starelid = %s AND attnum = %s;
+        INSERT INTO pg_statistic VALUES (%s, %s%s)
+        """ % (starelid, staattnum, starelid, staattnum, columnValues)
+
+def update_reltuples(cursor, relnamespace, relname, reltuples):
+    query = "UPDATE pg_class SET reltuples = %s WHERE relnamespace = '%s'::regnamespace AND (relname = '%s' OR relname = '%s_pkey')" % (reltuples, relnamespace, relname, relname)
+    cursor.execute(query)
+    # TODO: verify that 2 rows were updated.
+
+def enable_write_on_sys_tables(cursor):
+    query = "SET yb_non_ddl_txn_for_sys_tables_allowed = ON"
     cursor.execute(query)
 
-def unload_query_planner_sim_extension(cursor):
-    query = """
-        DROP EXTENSION IF EXISTS query_planner_sim;
-    """
+def disable_write_on_sys_tables(cursor):
+    query = "SET yb_non_ddl_txn_for_sys_tables_allowed = OFF"
     cursor.execute(query)
 
 def import_statistics(cursor, stat_file_name):
-    load_query_planner_sim_extension(cursor)
     if not os.path.exists(stat_file_name):
         print ("Statistics file %s does not exist" % stat_file_name)
     print ("Importing statistics from file %s" % stat_file_name)
-    query = "select import_statistics_from_file('%s')" % stat_file_name
-    cursor.execute(query)    
-    unload_query_planner_sim_extension(cursor)
+
+    with open(stat_file_name, 'r') as stat_file:
+        print ("Importing stats for\n")
+        for line in stat_file:
+            stat_json = json.loads(line)
+            print (stat_json["nspname"] + "." + stat_json["relname"] + "." + stat_json["attname"])
+            enable_write_on_sys_tables(cursor)
+            update_reltuples(cursor, stat_json["nspname"], stat_json["relname"], stat_json["reltuples"])
+            update_pg_statistic(cursor, stat_json)
+            disable_write_on_sys_tables(cursor)
 
 def main():
     args = parse_cmd_line()

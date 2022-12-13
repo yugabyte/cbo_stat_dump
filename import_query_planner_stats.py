@@ -106,15 +106,18 @@ def import_statistics(cursor, stat_file_name):
         print ("Statistics file %s does not exist" % stat_file_name)
     print ("Importing statistics from file %s" % stat_file_name)
 
-    with open(stat_file_name, 'r') as stat_file:
-        print ("Importing stats for\n")
-        for line in stat_file:
-            stat_json = json.loads(line)
-            print (stat_json["nspname"] + "." + stat_json["relname"] + "." + stat_json["attname"])
-            enable_write_on_sys_tables(cursor)
-            update_reltuples(cursor, stat_json["nspname"], stat_json["relname"], stat_json["reltuples"])
-            update_pg_statistic(cursor, stat_json)
-            disable_write_on_sys_tables(cursor)
+    statistics_json = json.load(open(stat_file_name, 'r'))
+
+    enable_write_on_sys_tables(cursor)
+
+    for pg_class_row_json in statistics_json['pg_class']:
+        update_reltuples(cursor, pg_class_row_json["nspname"], pg_class_row_json["relname"], pg_class_row_json["reltuples"])
+
+    for pg_statistic_row_json in statistics_json['pg_statistic']:
+        print (pg_statistic_row_json["nspname"] + "." + pg_statistic_row_json["relname"] + "." + pg_statistic_row_json["attname"])
+        update_pg_statistic(cursor, pg_statistic_row_json)
+        
+    disable_write_on_sys_tables(cursor)
 
 def main():
     args = parse_cmd_line()

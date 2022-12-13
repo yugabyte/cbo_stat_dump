@@ -14,7 +14,7 @@ options:
   -o OUT_DIR, --out_dir OUT_DIR
   -q SQL_FILE, --sql_file SQL_FILE
 '''
-
+from _ctypes import PyObj_FromPtr
 import psycopg2
 import argparse
 import time
@@ -157,6 +157,46 @@ def export_query_plan(cursor, sql_file, out_dir):
         for tuple in query_plan:
             query_plan_file.write(tuple[0] + '\n')
 
+# Custom JSON encoder to improve readability of statistics.json file
+# Derived from https://stackoverflow.com/a/13252112
+class NoIndent(object):
+    """ Value wrapper. """
+    def __init__(self, value):
+        self.value = value
+
+class CustomIndentEncoder(json.JSONEncoder):
+    FORMAT_SPEC = '@@{}@@'
+    regex = re.compile(FORMAT_SPEC.format(r'(\d+)'))
+
+    def __init__(self, **kwargs):
+        # Save copy of any keyword argument values needed for use here.
+        self.__sort_keys = kwargs.get('sort_keys', None)
+        super(CustomIndentEncoder, self).__init__(**kwargs)
+
+    def default(self, obj):
+        return (self.FORMAT_SPEC.format(id(obj)) if isinstance(obj, NoIndent)
+                else super(CustomIndentEncoder, self).default(obj))
+
+    def encode(self, obj):
+        format_spec = self.FORMAT_SPEC  # Local var to expedite access.
+        json_repr = super(CustomIndentEncoder, self).encode(obj)  # Default JSON.
+
+        # Replace any marked-up object ids in the JSON repr with the
+        # value returned from the json.dumps() of the corresponding
+        # wrapped Python object.
+        for match in self.regex.finditer(json_repr):
+            # see https://stackoverflow.com/a/15012814/355230
+            id = int(match.group(1))
+            no_indent = PyObj_FromPtr(id)
+            json_obj_repr = json.dumps(no_indent.value, sort_keys=self.__sort_keys)
+
+            # Replace the matched id string with json formatted representation
+            # of the corresponding Python object.
+            json_repr = json_repr.replace(
+                            '"{}"'.format(format_spec.format(id)), json_obj_repr)
+
+        return json_repr
+
 def export_statistics(cursor, relation_names, out_dir):
     statistics_file_name = out_dir + '/' + STATISTICS_FILE_NAME
     print("Exporting data from pg_statistic and pg_class to file %s" % statistics_file_name)
@@ -166,6 +206,21 @@ def export_statistics(cursor, relation_names, out_dir):
         relation_names_str = ', '.join(['\'{}\''.format(relation_name) for relation_name in relation_names])
         relation_names_filter = " and c.relname in (%s) " % relation_names_str
 
+    statistics_dict = {}
+
+    query = """
+        SELECT row_to_json(t) FROM 
+            (SELECT c.relname, c.reltuples, n.nspname
+                FROM pg_class c JOIN pg_namespace n on c.relnamespace = n.oid and n.nspname = 'public' %s) t
+        """ % (relation_names_filter);
+    
+    cursor.execute(query)
+    rows_pg_class = cursor.fetchall()
+    list_pg_class = []
+    for row in rows_pg_class:
+        list_pg_class.append(NoIndent(row[0]))
+    statistics_dict['pg_class'] = list_pg_class
+
     # We fetch everything from pg_statistic except starelid and staattnum
     query = """
         SELECT row_to_json(t) FROM 
@@ -174,7 +229,6 @@ def export_statistics(cursor, relation_names, out_dir):
                 a.attname attname, 
                 t.typname typname,
                 n.nspname nspname,
-                c.reltuples,
                 s.stainherit,
                 s.stanullfrac,
                 s.stawidth,
@@ -208,14 +262,19 @@ def export_statistics(cursor, relation_names, out_dir):
 
     cursor.execute(query)
 
-    with open(statistics_file_name, 'w') as statistics_file:
-        while True:
-            statistics_rows = cursor.fetchmany(STATISTICS_FETCH_ROWS_SIZE)
-            if not statistics_rows:
-                break
+    list_pg_statistic = []
+    while True:
+        pg_statistic_rows = cursor.fetchmany(STATISTICS_FETCH_ROWS_SIZE)
+        if not pg_statistic_rows:
+            break
 
-            for row in statistics_rows:
-                statistics_file.write(json.dumps(row[0]) + '\n')
+        for row in pg_statistic_rows:
+            list_pg_statistic.append(NoIndent(row[0]))
+
+    statistics_dict['pg_statistic'] = list_pg_statistic
+    statistics_json = json.dumps(statistics_dict, indent = 4, cls=CustomIndentEncoder)
+    with open(statistics_file_name, 'w') as statistics_file:
+        statistics_file.write(statistics_json)
 
 def main():
     args = parse_cmd_line()
@@ -226,9 +285,9 @@ def main():
     relation_names = []
     if args.sql_file is not None:
         relation_names = get_relation_names_in_query(cursor, args.sql_file)
-        export_query_file(args.sql_file, out_dir_abs_path)
-        export_query_plan(cursor, args.sql_file, out_dir_abs_path)
-    extract_ddl(cursor, connectionDict, relation_names, out_dir_abs_path)
+    #     export_query_file(args.sql_file, out_dir_abs_path)
+    #     export_query_plan(cursor, args.sql_file, out_dir_abs_path)
+    # extract_ddl(cursor, connectionDict, relation_names, out_dir_abs_path)
     export_statistics(cursor, relation_names, out_dir_abs_path)
 
 if __name__ == "__main__":

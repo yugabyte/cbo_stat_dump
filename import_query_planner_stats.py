@@ -69,14 +69,37 @@ def update_pg_statistic(cursor, stat_json):
                     "stanumbers5": "real[]"}
 
     stavaluesType = stat_json["typname"]
-    if (stavaluesType.startswith('_')):
-        stavaluesType += '[]'
     for i in range (1, 5):
         columnTypes["stavalues" + str(i)] = stavaluesType
 
     columnValues = ""
     for columnName, columnType in columnTypes.items():
-        columnValues += ", " + str(stat_json[columnName]) + "::" + columnType        
+        val = stat_json[columnName]
+        sql_val = ""
+        if (columnName.startswith('stavalues')):
+            # Convert a python list into SQL array string representation '{"...", "..."}'
+            sql_array = ""
+            if val is None:
+                sql_array = "{}"
+            else:
+                if isinstance(val[0], str):
+                    # Escape backslash and double quotes with backslash, but single quote with single quote
+                    val = ['"%s"' % e.replace('\\', '\\\\').replace('"', '\\"').replace('\'', '\'\'') for e in val]
+                    sql_array = ', '.join(val)
+                    sql_array = "{%s}" % (sql_array)
+                else:
+                    sql_array = str(val);
+                    sql_array = "{%s}" % (sql_array[1:-1])
+            sql_val = "array_in('%s', '%s'::regtype, -1)::anyarray" % (sql_array, columnType)
+        elif isinstance(val, list):
+            assert(columnType is "real[]")
+            sql_val = str(val);
+            sql_val = "'{%s}'::%s" % (sql_val[1:-1], columnType)
+        elif val is None:
+            sql_val = 'NULL::' + columnType
+        else:
+            sql_val = str(stat_json[columnName]) + "::" + columnType
+        columnValues += ", " + sql_val
 
     starelid = "'%s.%s'::regclass" % (stat_json["nspname"], stat_json["relname"])
     # Find staattnum from starelid and "attname" from statistics
@@ -84,9 +107,10 @@ def update_pg_statistic(cursor, stat_json):
     cursor.execute(query)
     staattnum = cursor.fetchone()[0]
     query = """
-        DELETE FROM pg_statistic WHERE starelid = %s AND attnum = %s;
+        DELETE FROM pg_statistic WHERE starelid = %s AND staattnum = %s;
         INSERT INTO pg_statistic VALUES (%s, %s%s)
         """ % (starelid, staattnum, starelid, staattnum, columnValues)
+    cursor.execute(query)
 
 def update_reltuples(cursor, relnamespace, relname, reltuples):
     query = "UPDATE pg_class SET reltuples = %s WHERE relnamespace = '%s'::regnamespace AND (relname = '%s' OR relname = '%s_pkey')" % (reltuples, relnamespace, relname, relname)

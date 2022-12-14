@@ -72,13 +72,13 @@ def parse_cmd_line():
     args = parser.parse_args()
     return args
 
-def json_search_relation_name_recurse(query_plan_json):
+def get_relations_from_json_recurse(query_plan_json):
     relations = []
     if 'Plans' in query_plan_json:
         for sub_plan_json in query_plan_json['Plans']:
             if 'Relation Name' in sub_plan_json:
                 relations.append(sub_plan_json['Relation Name'])
-            relations = relations + (json_search_relation_name_recurse(sub_plan_json))
+            relations = relations + (get_relations_from_json_recurse(sub_plan_json))
     return relations
 
 def get_relation_names_in_query(cursor, sql_file):
@@ -87,9 +87,11 @@ def get_relation_names_in_query(cursor, sql_file):
     
     explain_query = "EXPLAIN (FORMAT JSON) %s" % sql_text
     cursor.execute(explain_query)
-    query_plan_json = cursor.fetchone()[0]
+    query_plan_json = cursor.fetchone()[0][0]
     relations = []
-    relations = json_search_relation_name_recurse(query_plan_json[0]['Plan'])
+    if 'Relation Name' in query_plan_json['Plan']:
+        relations.append(query_plan_json['Plan']['Relation Name'])
+    relations.extend(get_relations_from_json_recurse(query_plan_json['Plan']))
     return relations
 
 def get_relation_oids(cursor, relation_names):
@@ -100,14 +102,13 @@ def get_relation_oids(cursor, relation_names):
         relation_oids.append(cursor.fetchone()[0])
     return relation_oids
 
-def get_process_output(cmd, output_file_name):
+def get_process_output(cmd):
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=os.environ)
     outmsg, errormsg = p.communicate()
     if p.returncode != 0:
         sys.stderr.writelines('\nError when executing the following command.\n\n' + cmd + '\n' + errormsg.decode() + '\n\n')
         sys.exit(1)
-    with open(output_file_name, 'a') as output_file:
-        output_file.write("%s" % outmsg.decode('UTF-8'))
+    return outmsg.decode('UTF-8')
 
 def extract_ddl(cursor, connectionDict, relation_names, output_dir):
     if not shutil.which("ysql_dump"):
@@ -123,14 +124,19 @@ def extract_ddl(cursor, connectionDict, relation_names, output_dir):
         ysql_connection_str = ysql_connection_str + "-W %s" % (connectionDict["password"])
 
     if relation_names:
+        os.remove(ddl_tmp_file_name)
         for relation_name in relation_names:
             ysql_dump_cmd = "ysql_dump %s -t %s -s" % (ysql_connection_str, relation_name)
-            get_process_output(ysql_dump_cmd, ddl_tmp_file_name)
+            outmsg = get_process_output(ysql_dump_cmd)
+            with open(ddl_tmp_file_name, 'a') as ddl_tmp_file:
+                ddl_tmp_file.write(outmsg)
     else:
         ysql_dump_cmd = "ysql_dump %s -s" % (ysql_connection_str)
-        get_process_output(ysql_dump_cmd, ddl_tmp_file_name)
+        outmsg = get_process_output(ysql_dump_cmd)
+        with open(ddl_tmp_file_name, 'w') as ddl_tmp_file:
+            ddl_tmp_file.write(outmsg)
 
-    with open(ddl_file_name, 'a') as ddl_file:
+    with open(ddl_file_name, 'w') as ddl_file:
         with open(ddl_tmp_file_name, 'r') as ddl_tmp_file:
             for line in ddl_tmp_file:
                 if line.strip():
@@ -138,6 +144,7 @@ def extract_ddl(cursor, connectionDict, relation_names, output_dir):
                     if m is None:
                         ddl_file.write(line)
         ddl_file.write('\n')
+    os.remove(ddl_tmp_file_name)
 
 def export_query_file(sql_file, out_dir):
     query_file_name = out_dir + '/' + QUERY_FILE_NAME
@@ -285,9 +292,9 @@ def main():
     relation_names = []
     if args.sql_file is not None:
         relation_names = get_relation_names_in_query(cursor, args.sql_file)
-    #     export_query_file(args.sql_file, out_dir_abs_path)
-    #     export_query_plan(cursor, args.sql_file, out_dir_abs_path)
-    # extract_ddl(cursor, connectionDict, relation_names, out_dir_abs_path)
+        export_query_file(args.sql_file, out_dir_abs_path)
+        export_query_plan(cursor, args.sql_file, out_dir_abs_path)
+    extract_ddl(cursor, connectionDict, relation_names, out_dir_abs_path)
     export_statistics(cursor, relation_names, out_dir_abs_path)
 
 if __name__ == "__main__":

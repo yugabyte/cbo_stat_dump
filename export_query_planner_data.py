@@ -124,7 +124,6 @@ def extract_ddl(cursor, connectionDict, relation_names, output_dir):
         ysql_connection_str = ysql_connection_str + "-W %s" % (connectionDict["password"])
 
     if relation_names:
-        os.remove(ddl_tmp_file_name)
         for relation_name in relation_names:
             ysql_dump_cmd = "ysql_dump %s -t %s -s" % (ysql_connection_str, relation_name)
             outmsg = get_process_output(ysql_dump_cmd)

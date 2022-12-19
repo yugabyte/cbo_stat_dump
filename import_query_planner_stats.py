@@ -92,7 +92,7 @@ def update_pg_statistic(cursor, stat_json):
                     sql_array = "{%s}" % (sql_array[1:-1])
             sql_val = "array_in('%s', '%s'::regtype, -1)::anyarray" % (sql_array, columnType)
         elif isinstance(val, list):
-            assert(columnType is "real[]")
+            assert(columnType == 'real[]')
             sql_val = str(val);
             sql_val = "'{%s}'::%s" % (sql_val[1:-1], columnType)
         elif val is None:
@@ -113,7 +113,8 @@ def update_pg_statistic(cursor, stat_json):
     cursor.execute(query)
 
 def update_reltuples(cursor, relnamespace, relname, reltuples):
-    query = "UPDATE pg_class SET reltuples = %s WHERE relnamespace = '%s'::regnamespace AND (relname = '%s' OR relname = '%s_pkey')" % (reltuples, relnamespace, relname, relname)
+    query = "UPDATE pg_class SET reltuples = %s WHERE relnamespace = '%s'::regnamespace AND (relname = '%s' OR relname = '%s_pkey');" % (reltuples, relnamespace, relname, relname)
+    print (query)
     cursor.execute(query)
     # TODO: verify that 2 rows were updated.
 
@@ -135,12 +136,14 @@ def import_statistics(cursor, stat_file_name):
     enable_write_on_sys_tables(cursor)
 
     for pg_class_row_json in statistics_json['pg_class']:
+        print (pg_class_row_json["nspname"] + "." + pg_class_row_json["relname"] + " = " + str(pg_class_row_json["reltuples"]))
         update_reltuples(cursor, pg_class_row_json["nspname"], pg_class_row_json["relname"], pg_class_row_json["reltuples"])
 
     for pg_statistic_row_json in statistics_json['pg_statistic']:
         print (pg_statistic_row_json["nspname"] + "." + pg_statistic_row_json["relname"] + "." + pg_statistic_row_json["attname"])
         update_pg_statistic(cursor, pg_statistic_row_json)
         
+    cursor.execute('update pg_yb_catalog_version set current_version=current_version+1 where db_oid=1');
     disable_write_on_sys_tables(cursor)
 
 def main():
@@ -148,6 +151,9 @@ def main():
     connectionDict = get_connection_dict(args)
     conn, cursor = connect_database(connectionDict)
     import_statistics(cursor, args.stat_file)
+    conn.commit()
+    cursor.close()
+    conn.close()
 
 if __name__ == "__main__":
     main()

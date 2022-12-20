@@ -80,7 +80,7 @@ def update_pg_statistic(cursor, stat_json):
             # Convert a python list into SQL array string representation '{"...", "..."}'
             sql_array = ""
             if val is None:
-                sql_array = "{}"
+                sql_val = "NULL"
             else:
                 if isinstance(val[0], str):
                     # Escape backslash and double quotes with backslash, but single quote with single quote
@@ -90,7 +90,7 @@ def update_pg_statistic(cursor, stat_json):
                 else:
                     sql_array = str(val);
                     sql_array = "{%s}" % (sql_array[1:-1])
-            sql_val = "array_in('%s', '%s'::regtype, -1)::anyarray" % (sql_array, columnType)
+                sql_val = "array_in('%s', '%s'::regtype, -1)::anyarray" % (sql_array, columnType)
         elif isinstance(val, list):
             assert(columnType == 'real[]')
             sql_val = str(val);

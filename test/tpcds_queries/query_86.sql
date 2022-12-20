@@ -1,0 +1,51 @@
+-- TODO : Query Failure
+-- ysqlsh:/home/yugabyte/tpcds-queries.sql:4457: ERROR:  column "lochierarchy" does not exist
+-- LINE 21:    case when lochierarchy = 0 then i_category end,
+
+-- select   
+--     sum(ws_net_paid) as total_sum
+--    ,i_category
+--    ,i_class
+--    ,grouping(i_category)+grouping(i_class) as lochierarchy
+--    ,rank() over (
+--  	partition by grouping(i_category)+grouping(i_class),
+--  	case when grouping(i_class) = 0 then i_category end 
+--  	order by sum(ws_net_paid) desc) as rank_within_parent
+--  from
+--     web_sales
+--    ,date_dim       d1
+--    ,item
+--  where
+--     d1.d_month_seq between 1186 and 1186+11
+--  and d1.d_date_sk = ws_sold_date_sk
+--  and i_item_sk  = ws_item_sk
+--  group by rollup(i_category,i_class)
+--  order by
+--    lochierarchy desc,
+--    case when lochierarchy = 0 then i_category end,
+--    rank_within_parent
+--  limit 100;
+
+-- -- end query 86 in stream 0 using template query86.tpl
+-- -- start query 87 in stream 0 using template query87.tpl
+-- select count(*) 
+-- from ((select distinct c_last_name, c_first_name, d_date
+--        from store_sales, date_dim, customer
+--        where store_sales.ss_sold_date_sk = date_dim.d_date_sk
+--          and store_sales.ss_customer_sk = customer.c_customer_sk
+--          and d_month_seq between 1202 and 1202+11)
+--        except
+--       (select distinct c_last_name, c_first_name, d_date
+--        from catalog_sales, date_dim, customer
+--        where catalog_sales.cs_sold_date_sk = date_dim.d_date_sk
+--          and catalog_sales.cs_bill_customer_sk = customer.c_customer_sk
+--          and d_month_seq between 1202 and 1202+11)
+--        except
+--       (select distinct c_last_name, c_first_name, d_date
+--        from web_sales, date_dim, customer
+--        where web_sales.ws_sold_date_sk = date_dim.d_date_sk
+--          and web_sales.ws_bill_customer_sk = customer.c_customer_sk
+--          and d_month_seq between 1202 and 1202+11)
+-- ) cool_cust
+-- ;
+

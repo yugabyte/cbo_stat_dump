@@ -20,3 +20,4 @@ and s_state = 'TN'
 and ctr1.ctr_customer_sk = c_customer_sk
 order by c_customer_id
 limit 100;
+

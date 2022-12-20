@@ -92,6 +92,7 @@ def get_relation_names_in_query(cursor, sql_file):
     if 'Relation Name' in query_plan_json['Plan']:
         relations.append(query_plan_json['Plan']['Relation Name'])
     relations.extend(get_relations_from_json_recurse(query_plan_json['Plan']))
+    relations = list(dict.fromkeys(relations))
     return relations
 
 def get_relation_oids(cursor, relation_names):
@@ -282,6 +283,9 @@ def export_statistics(cursor, relation_names, out_dir):
     with open(statistics_file_name, 'w') as statistics_file:
         statistics_file.write(statistics_json)
 
+def set_extra_float_digits(cursor, digits):
+    cursor.execute('SET extra_float_digits = 3')
+
 def main():
     args = parse_cmd_line()
     connectionDict = get_connection_dict(args)
@@ -293,8 +297,11 @@ def main():
         relation_names = get_relation_names_in_query(cursor, args.sql_file)
         export_query_file(args.sql_file, out_dir_abs_path)
         export_query_plan(cursor, args.sql_file, out_dir_abs_path)
+    set_extra_float_digits(cursor, 3)
     extract_ddl(cursor, connectionDict, relation_names, out_dir_abs_path)
     export_statistics(cursor, relation_names, out_dir_abs_path)
+    cursor.close()
+    conn.close()
 
 if __name__ == "__main__":
     main()

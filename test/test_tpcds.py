@@ -36,6 +36,7 @@ def parse_arguments():
     parser.add_argument('--test_user', help='YugabyteDB username', default='yugabyte')
     parser.add_argument('--test_password', help='Password')
     parser.add_argument('-b', '--benchmark', required=True, help='Name of the benchmark')
+    parser.add_argument('--ignore_ran_tests', action=argparse.BooleanOptionalAction, help='Ignore tests for which an outdir exists')
 
     args = parser.parse_args()
 
@@ -179,12 +180,17 @@ def main():
         sys.stderr.write('Test queries path not found : ' + benchmark_queries_path)
         sys.exit(1)
     print ('Testing queries in ' + benchmark_queries_path)
-    for query_file_name in os.listdir(benchmark_queries_path):
+    list_query_files = os.listdir(benchmark_queries_path)
+    list_query_files.sort()
+    for query_file_name in list_query_files:
         query_name = Path(query_file_name).stem
         query_file_name_abs = os.path.join(benchmark_queries_path, query_file_name)
         if os.path.isfile(query_file_name_abs):
-            print ('Testing ' + query_name)
             query_outdir = TEST_OUTDIR + '/' + args.benchmark + '/' + query_name
+            if args.ignore_ran_tests and os.path.exists(query_outdir):
+                print ('Ignoring previously ran test ' + args.benchmark + ' : ' + query_name)
+                continue
+            print ('Testing ' + query_name)
             test_db_name = args.benchmark + '_' + query_name + '_test_db'
             create_test_database(args, test_db_name)
             run_export_script(args, query_outdir, query_file_name_abs)

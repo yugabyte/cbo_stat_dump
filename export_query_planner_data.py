@@ -68,6 +68,7 @@ def parse_cmd_line():
     parser.add_argument('-p', '--password', help='Password')
     parser.add_argument('-o', '--out_dir', default='/tmp/' + DEFAULT_OUT_DIR_PREFIX +time.strftime("%Y%m%d-%H%M%S"), help='Output directory')
     parser.add_argument('-q', '--sql_file')
+    parser.add_argument('--enable_optimizer_statistics', action=argparse.BooleanOptionalAction, help='Set yb_enable_optimizer_statistics=ON before running explain on query')
 
     args = parser.parse_args()
     return args
@@ -151,11 +152,14 @@ def export_query_file(sql_file, out_dir):
     print("Exporting query file to %s" % query_file_name)
     shutil.copy(sql_file, query_file_name)
 
-def export_query_plan(cursor, sql_file, out_dir):
+def export_query_plan(cursor, sql_file, out_dir, enable_optimizer_statistics):
     query_plan_file_name = out_dir + '/' + QUERY_PLAN_FILE_NAME
     print("Exporting query plan to %s" % query_plan_file_name)
     with open(sql_file, 'r') as sql_f:
         sql_text = sql_f.read()
+
+    if enable_optimizer_statistics:
+        cursor.execute('SET yb_enable_optimizer_statistics=ON')
 
     explain_query = "EXPLAIN %s" % sql_text
     cursor.execute(explain_query)
@@ -296,7 +300,7 @@ def main():
     if args.sql_file is not None:
         relation_names = get_relation_names_in_query(cursor, args.sql_file)
         export_query_file(args.sql_file, out_dir_abs_path)
-        export_query_plan(cursor, args.sql_file, out_dir_abs_path)
+        export_query_plan(cursor, args.sql_file, out_dir_abs_path, args.enable_optimizer_statistics)
     set_extra_float_digits(cursor, 3)
     extract_ddl(cursor, connectionDict, relation_names, out_dir_abs_path)
     export_statistics(cursor, relation_names, out_dir_abs_path)

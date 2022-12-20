@@ -37,6 +37,7 @@ def parse_arguments():
     parser.add_argument('--test_password', help='Password')
     parser.add_argument('-b', '--benchmark', required=True, help='Name of the benchmark')
     parser.add_argument('--ignore_ran_tests', action=argparse.BooleanOptionalAction, help='Ignore tests for which an outdir exists')
+    parser.add_argument('--enable_optimizer_statistics', action=argparse.BooleanOptionalAction, help='Set yb_enable_optimizer_statistics=ON before running explain on query')
 
     args = parser.parse_args()
 
@@ -73,6 +74,8 @@ def export_query_plan(args, test_db_name, query_file, outdir):
 
     explain_query = "EXPLAIN %s" % sql_text
     test_conn, test_cursor = connect_test_database(args, test_db_name)
+    if args.enable_optimizer_statistics:
+        test_cursor.execute('SET yb_enable_optimizer_statistics=ON')
     test_cursor.execute(explain_query)    
     query_plan = test_cursor.fetchall()
     with open(query_plan_file_name, 'w') as query_plan_file:
@@ -132,13 +135,17 @@ def drop_test_database(args, test_db_name):
         print ('Dropped database ' + test_db_name)
 
 def run_export_script(args, query_outdir, query_file_name_abs):
-    subprocess.run(['python', PROJECT_DIR + '/' + EXPORT_SCRIPT, 
-                    "-H", args.target_host,
-                    "-P", str(args.target_port),
-                    "-D", args.target_database,
-                    "-u", args.target_user,
-                    "-o", query_outdir,
-                    "-q", query_file_name_abs])
+    cmd = ['python', PROJECT_DIR + '/' + EXPORT_SCRIPT, 
+            '-H', args.target_host,
+            '-P', str(args.target_port),
+            '-D', args.target_database,
+            '-u', args.target_user,
+            '-o', query_outdir,
+            '-q', query_file_name_abs]
+    if args.enable_optimizer_statistics:
+        cmd.append('--enable_optimizer_statistics')
+    
+    subprocess.run(cmd)
 
 def run_ddl_on_test_database(args, test_db_name, ddl_file):
     assert_binary_in_path('ysqlsh')

@@ -26,16 +26,16 @@ IMPORT_SCRIPT = 'import_query_planner_stats.py'
 def parse_arguments():
     parser = argparse.ArgumentParser('test_with_benchmark', 
             'Test the framework to reproduce query plans on benchmarks')
-    parser.add_argument('--target_host', help='Hostname or IP address', default='localhost')
-    parser.add_argument('--target_port', help='Port number, default 5433', default=5433)
-    parser.add_argument('--target_user', help='YugabyteDB username', default='yugabyte')
-    parser.add_argument('--target_password', help='Password')
-    parser.add_argument('--target_database', help='Target Database name')
-    parser.add_argument('--test_host', help='Hostname or IP address', default='localhost')
-    parser.add_argument('--test_port', help='Port number, default 5433', default=5433)
-    parser.add_argument('--test_user', help='YugabyteDB username', default='yugabyte')
-    parser.add_argument('--test_password', help='Password')
     parser.add_argument('-b', '--benchmark', required=True, help='Name of the benchmark')
+    parser.add_argument('--target_host', help='Hostname or IP address, default localhost', default='localhost')
+    parser.add_argument('--target_port', help='Port number, default 5433', default=5433)
+    parser.add_argument('--target_user', help='YugabyteDB username, default yugabyte', default='yugabyte')
+    parser.add_argument('--target_password', help='Password, default no password')
+    parser.add_argument('--target_database', help='Target Database name, default benchmark name with "_db" suffix')
+    parser.add_argument('--test_host', help='Hostname or IP address, default same as TARGET_HOST')
+    parser.add_argument('--test_port', help='Port number, , default same as TARGET_PORT')
+    parser.add_argument('--test_user', help='YugabyteDB username, default same as TARGET_USER')
+    parser.add_argument('--test_password', help='Password, default same as TARGET_PASSWORD')
     parser.add_argument('--ignore_ran_tests', action=argparse.BooleanOptionalAction, help='Ignore tests for which an outdir exists')
     parser.add_argument('--enable_optimizer_statistics', action=argparse.BooleanOptionalAction, help='Set yb_enable_optimizer_statistics=ON before running explain on query')
 
@@ -86,7 +86,7 @@ def export_query_plan(args, test_db_name, query_file, outdir):
     test_conn.close()
 
 def get_test_connection_str(args):
-    connection_str = ['-h', args.target_host, '-p', str(args.target_port), '-U', args.target_user]
+    connection_str = ['-h', args.test_host, '-p', str(args.test_port), '-U', args.test_user]
     if args.test_password is not None:
         connection_str.extend(['-W', args.test_password])
     return connection_str

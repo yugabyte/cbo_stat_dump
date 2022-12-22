@@ -27,8 +27,8 @@ usage:
 This script can be run on a client and will connect to the customer database 
 using credentials provided in command line arguments. Note that the user must 
 have appropriate privileges to access system tables and objects used in the 
-query. The script will export the information in the <OUT_DIR> or in a folder in
-`/tmp` on the client where the script is run. The following information is 
+query. The script will export the information in the `<OUT_DIR>` or in a folder 
+in `/tmp` on the client where the script is run. The following information is 
 exported,
 
 | File name | Description |

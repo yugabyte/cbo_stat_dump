@@ -29,7 +29,7 @@ IMPORT_SCRIPT = 'import_query_planner_stats.py'
 
 def parse_arguments():
     parser = argparse.ArgumentParser('test_with_benchmark', 
-            'Test the framework to reproduce query plans on benchmarks')
+            description='Test the framework to reproduce query plans on benchmarks')
     parser.add_argument('-b', '--benchmark', required=True, help='Name of the benchmark')
     parser.add_argument('--target_host', help='Hostname or IP address, default localhost', default='localhost')
     parser.add_argument('--target_port', help='Port number, default 5433', default=5433)

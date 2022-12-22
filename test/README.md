@@ -3,35 +3,18 @@
 The objective of this test is to test the frameworks against benchmarks.
 
 ```
-$ python ./test/test_benchmark.py --help
-usage: Test the framework to reproduce query plans on benchmarks
 
-options:
-  -h, --help            show this help message and exit
-  -b BENCHMARK, --benchmark BENCHMARK
-                        Name of the benchmark
-  --target_host TARGET_HOST
-                        Hostname or IP address, default localhost
-  --target_port TARGET_PORT
-                        Port number, default 5433
-  --target_user TARGET_USER
-                        YugabyteDB username, default yugabyte
-  --target_password TARGET_PASSWORD
-                        Password, default no password
-  --target_database TARGET_DATABASE
-                        Target Database name, default benchmark name with "_db" suffix
-  --test_host TEST_HOST
-                        Hostname or IP address, default same as TARGET_HOST
-  --test_port TEST_PORT
-                        Port number, , default same as TARGET_PORT
-  --test_user TEST_USER
-                        YugabyteDB username, default same as TARGET_USER
-  --test_password TEST_PASSWORD
-                        Password, default same as TARGET_PASSWORD
-  --ignore_ran_tests, --no-ignore_ran_tests
-                        Ignore tests for which an outdir exists
-  --enable_optimizer_statistics, --no-enable_optimizer_statistics
-                        Set yb_enable_optimizer_statistics=ON before running explain on query
+usage: 
+    test_with_benchmark 
+        [-h] 
+        -b BENCHMARK 
+        [--target_host TARGET_HOST] [--target_port TARGET_PORT] 
+        [--target_user TARGET_USER] [--target_password TARGET_PASSWORD] 
+        [--target_database TARGET_DATABASE] 
+        [--test_host TEST_HOST] [--test_port TEST_PORT] 
+        [--test_user TEST_USER] [--test_password TEST_PASSWORD]
+        [--ignore_ran_tests] 
+        [--enable_optimizer_statistics]
 ```
 
 Terminology: 
@@ -40,19 +23,18 @@ Terminology:
 
 Credentials for the target and test instance can be provided as command line 
 parameters. For purpose of testing, the target and test may point to the same 
-instance. If the credentials for TEST deployment not provided, we will use the
-TARGET deployment for testing.
+instance.
 
-The test can be run with minimum command line parameters as follows.
-
-```
-$ python -b tpcds
-```
+If credentials for TARGET are not provided the test tries to connect to the 
+server on localhost:5433 with username `yugabyte` without password. If the 
+credentials for TEST deployment not provided, the script uses the TARGET for 
+testing.
 
 The test expects the TARGET deployment to contain a database with name 
-`tpcds_db` with the data set and assumes that ANALYZE has been run on the 
-tables. Further it expects the test queries to be in the path 
-`./test/tpcds_queries`.
+`<benchmark>_db`. This can be overridden by `--target_database`. The target 
+database should contain the tables with data and ANALYZE should have been run on 
+the tables. Further the script expects the test queries to be in the path 
+`PROJECT_ROOT/test/<benchmark>_queries`.
 
 For each query in the benchmark suite, the test script will first run the 
 `export_query_plan_data.py` script to extract the DDL, query plan and 

@@ -18,8 +18,12 @@ import shutil
 import sys
 import difflib
 
-PROJECT_DIR = os.path.abspath('../')
-TEST_OUTDIR = os.path.abspath('../test_out_dir')
+
+def get_project_root() -> Path:
+    return Path(__file__).parent.parent
+
+PROJECT_DIR = str(get_project_root())
+TEST_OUTDIR = PROJECT_DIR + '/test_out_dir'
 EXPORT_SCRIPT = 'export_query_planner_data.py'
 IMPORT_SCRIPT = 'import_query_planner_stats.py'
 
@@ -87,8 +91,6 @@ def export_query_plan(args, test_db_name, query_file, outdir):
 
 def get_test_connection_str(args):
     connection_str = ['-h', args.test_host, '-p', str(args.test_port), '-U', args.test_user]
-    if args.test_password is not None:
-        connection_str.extend(['-W', args.test_password])
     return connection_str
 
 '''
@@ -103,7 +105,10 @@ def create_test_database(args, test_db_name):
     cmd.extend(connection_str)
     cmd.append(test_db_name)
 
-    result = subprocess.run(cmd)
+    my_env = os.environ.copy()
+    if args.test_password is not None:
+        my_env["PGPASSWORD"] = args.test_password
+    result = subprocess.run(cmd, env=my_env)
     if result.stderr is not None:
         sys.stderr.writelines('Error in createdb: ' + result.stderr)
         sys.exit(1)
@@ -127,7 +132,10 @@ def drop_test_database(args, test_db_name):
     cmd.extend(connection_str)
     cmd.append(test_db_name)
 
-    result = subprocess.run(cmd)
+    my_env = os.environ.copy()
+    if args.test_password is not None:
+        my_env["PGPASSWORD"] = args.test_password
+    result = subprocess.run(cmd, env=my_env)
     if result.stderr is not None:
         sys.stderr.writelines('Error in dropdb: ' + result.stderr)
         sys.exit(1)
@@ -142,6 +150,9 @@ def run_export_script(args, query_outdir, query_file_name_abs):
             '-u', args.target_user,
             '-o', query_outdir,
             '-q', query_file_name_abs]
+            
+    if args.target_password is not None:
+        cmd.extend(['-p', args.target_password])
     if args.enable_optimizer_statistics:
         cmd.append('--enable_optimizer_statistics')
     
@@ -156,15 +167,23 @@ def run_ddl_on_test_database(args, test_db_name, ddl_file):
     cmd.extend(connection_str)
     cmd.extend(['-d', test_db_name])
     cmd.extend(['-f', ddl_file])
-    subprocess.run(cmd)
+
+    my_env = os.environ.copy()
+    if args.test_password is not None:
+        my_env["PGPASSWORD"] = args.test_password
+    subprocess.run(cmd, env=my_env)
 
 def run_import_script(args, test_db_name, statistics_file_name):
-    subprocess.run(['python', PROJECT_DIR + '/' + IMPORT_SCRIPT, 
-                    "-H", args.test_host,
-                    "-P", str(args.test_port),
-                    "-D", test_db_name,
-                    "-u", args.test_user,
-                    "-s", statistics_file_name])
+    cmd = ['python', PROJECT_DIR + '/' + IMPORT_SCRIPT, 
+            "-H", args.test_host,
+            "-P", str(args.test_port),
+            "-D", test_db_name,
+            "-u", args.test_user,
+            "-s", statistics_file_name]
+    if args.target_password is not None:
+        cmd.extend(['-p', args.target_password])
+    
+    subprocess.run(cmd)
 
 def diff_query_plans(outdir):
     with open(outdir + '/query_plan.txt') as target_query_plan:
@@ -198,9 +217,9 @@ def main():
                 print ('Ignoring previously ran test ' + args.benchmark + ' : ' + query_name)
                 continue
             print ('Testing ' + query_name)
+            run_export_script(args, query_outdir, query_file_name_abs)
             test_db_name = args.benchmark + '_' + query_name + '_test_db'
             create_test_database(args, test_db_name)
-            run_export_script(args, query_outdir, query_file_name_abs)
             run_ddl_on_test_database(args, test_db_name, query_outdir + '/ddl.sql')
             run_import_script(args, test_db_name, query_outdir + '/statistics.json')
             export_query_plan(args, test_db_name, query_file_name_abs, query_outdir)

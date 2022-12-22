@@ -26,8 +26,8 @@ import json
 
 def get_connection_dict(args):
     envOpts = os.environ
-    host = args.host or platform.node();
-    port = args.port or ('PGPORT' in envOpts and envOpts['PGPORT']) or '5433'
+    host = args.host
+    port = args.port
     user = args.user
     password = args.password
     db = args.database;
@@ -61,11 +61,11 @@ def parse_cmd_line():
         prog = 'export_query_planner_data',
         description = 'Exports statistics and other data to reproduce query plan'
     )
-    parser.add_argument('-H', '--host', help='Hostname or IP address')
-    parser.add_argument('-P', '--port', help='Port number, default 5433')
-    parser.add_argument('-D', '--database', required=True, help='Database name')
-    parser.add_argument('-u', '--user', required=True, help='YugabyteDB username')
-    parser.add_argument('-p', '--password', help='Password')
+    parser.add_argument('-H', '--host', help='Hostname or IP address, default localhost', default="localhost")
+    parser.add_argument('-P', '--port', help='Port number, default 5433', default=5433)
+    parser.add_argument('-D', '--database', required=True, help='Database name, default yugabyte', default="yugabyte")
+    parser.add_argument('-u', '--user', required=True, help='YugabyteDB username, default yugabyte', default="yugabyte")
+    parser.add_argument('-p', '--password', help='Password, default no password')
     parser.add_argument('-o', '--out_dir', default='/tmp/' + DEFAULT_OUT_DIR_PREFIX +time.strftime("%Y%m%d-%H%M%S"), help='Output directory')
     parser.add_argument('-q', '--sql_file')
     parser.add_argument('--enable_optimizer_statistics', action=argparse.BooleanOptionalAction, help='Set yb_enable_optimizer_statistics=ON before running explain on query')
@@ -122,17 +122,18 @@ def extract_ddl(cursor, connectionDict, relation_names, output_dir):
     ddl_tmp_file_name = ddl_file_name + '.tmp'
     
     ysql_connection_str = "-d %s -h %s -p %s -U %s" % (connectionDict["database"], connectionDict["host"], connectionDict["port"], connectionDict["user"])
+    password_prefix_str = ""
     if connectionDict["password"] is not None:
-        ysql_connection_str = ysql_connection_str + "-W %s" % (connectionDict["password"])
+        password_prefix_str = "PGPASSWORD=%s " % connectionDict["password"]
 
     if relation_names:
         for relation_name in relation_names:
-            ysql_dump_cmd = "ysql_dump %s -t %s -s" % (ysql_connection_str, relation_name)
+            ysql_dump_cmd = password_prefix_str + "ysql_dump %s -t %s -s" % (ysql_connection_str, relation_name)
             outmsg = get_process_output(ysql_dump_cmd)
             with open(ddl_tmp_file_name, 'a') as ddl_tmp_file:
                 ddl_tmp_file.write(outmsg)
     else:
-        ysql_dump_cmd = "ysql_dump %s -s" % (ysql_connection_str)
+        ysql_dump_cmd = password_prefix_str + "ysql_dump %s -s" % (ysql_connection_str)
         outmsg = get_process_output(ysql_dump_cmd)
         with open(ddl_tmp_file_name, 'w') as ddl_tmp_file:
             ddl_tmp_file.write(outmsg)

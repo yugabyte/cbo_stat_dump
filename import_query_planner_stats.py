@@ -11,8 +11,8 @@ import json
 
 def get_connection_dict(args):
     envOpts = os.environ
-    host = args.host or platform.node();
-    port = args.port or ('PGPORT' in envOpts and envOpts['PGPORT']) or '5433'
+    host = args.host
+    port = args.port
     user = args.user
     password = args.password
     db = args.database;
@@ -37,11 +37,11 @@ def parse_cmd_line():
         prog = 'export_query_planner_data',
         description = 'Exports statistics and other data to reproduce query plan'
     )
-    parser.add_argument('-H', '--host', help='Hostname or IP address')
-    parser.add_argument('-P', '--port', help='Port number, default 5433')
-    parser.add_argument('-D', '--database', required=True, help='Database name')
-    parser.add_argument('-u', '--user', required=True, help='YugabyteDB username')
-    parser.add_argument('-p', '--password', help='Password')
+    parser.add_argument('-H', '--host', help='Hostname or IP address, default localhost', default="localhost")
+    parser.add_argument('-P', '--port', help='Port number, default 5433', default=5433)
+    parser.add_argument('-D', '--database', required=True, help='Database name, default yugabyte', default="yugabyte")
+    parser.add_argument('-u', '--user', required=True, help='YugabyteDB username, default yugabyte', default="yugabyte")
+    parser.add_argument('-p', '--password', help='Password, default no password')
     parser.add_argument('-s', '--stat_file', required=True, help='JSON file with table statistics')
     
     args = parser.parse_args()

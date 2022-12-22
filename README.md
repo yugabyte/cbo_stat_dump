@@ -32,6 +32,7 @@ query. The script will export the information in the <OUT_DIR> or in a folder in
 exported,
 
 | File name | Description |
+| --------- | ----------- |
 | `query.sql` | The same query which was provided to the script. |
 | `ddl.sql` | DDL for the object used in the query. |
 | `query_plan.txt` | Query plan generated on the customer system | 

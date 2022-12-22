@@ -3,7 +3,6 @@
 The objective of this test is to test the frameworks against benchmarks.
 
 ```
-
 usage: 
     test_with_benchmark 
         [-h] 

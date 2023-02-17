@@ -42,6 +42,7 @@ def parse_arguments():
     parser.add_argument('--test_password', help='Password, default same as TARGET_PASSWORD')
     parser.add_argument('--ignore_ran_tests', action='store_true', help='Ignore tests for which an outdir exists')
     parser.add_argument('--enable_optimizer_statistics', action='store_true', help='Set yb_enable_optimizer_statistics=ON before running explain on query')
+    parser.add_argument('--colocation', action='store_true', help='Creates test database with colocation ie. all tables are colocated on a single tablet')
 
     args = parser.parse_args()
 
@@ -104,6 +105,8 @@ def create_test_database(args, test_db_name):
     cmd = ['createdb']
     cmd.extend(connection_str)
     cmd.append(test_db_name)
+    if args.colocation:
+        cmd.append('--colocation')
 
     my_env = os.environ.copy()
     if args.test_password is not None:

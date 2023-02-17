@@ -40,8 +40,8 @@ def parse_arguments():
     parser.add_argument('--test_port', help='Port number, , default same as TARGET_PORT')
     parser.add_argument('--test_user', help='YugabyteDB username, default same as TARGET_USER')
     parser.add_argument('--test_password', help='Password, default same as TARGET_PASSWORD')
-    parser.add_argument('--ignore_ran_tests', action=argparse.BooleanOptionalAction, help='Ignore tests for which an outdir exists')
-    parser.add_argument('--enable_optimizer_statistics', action=argparse.BooleanOptionalAction, help='Set yb_enable_optimizer_statistics=ON before running explain on query')
+    parser.add_argument('--ignore_ran_tests', action='store_true', help='Ignore tests for which an outdir exists')
+    parser.add_argument('--enable_optimizer_statistics', action='store_true', help='Set yb_enable_optimizer_statistics=ON before running explain on query')
 
     args = parser.parse_args()
 

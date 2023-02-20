@@ -28,6 +28,7 @@ from pathlib import Path
 
 import psycopg2
 
+import urllib.request, json
 
 def get_connection_dict(args):
     host = args.host
@@ -56,8 +57,15 @@ QUERY_FILE_NAME = 'query.sql'
 DDL_FILE_NAME = 'ddl.sql'
 QUERY_PLAN_FILE_NAME = 'query_plan.txt'
 STATISTICS_FILE_NAME = 'statistics.json'
+YSQL_PG_CONF_FILE_NAME = 'ysql_pg_conf.csv'
+GFLAGS_FILE_NAME = 'gflags.json'
 PG_CLASS_FILE_NAME = 'pg_class.json'
 DEFAULT_OUT_DIR_PREFIX = 'query_planner_data_'
+CBO_RELEVANT_GUC_PARAMS = {'yb_enable_optimizer_statistics', 
+                           'yb_bnl_batch_size', 
+                           'yb_enable_expression_pushdown', 
+                           'yb_enable_geolocation_costing', 
+                           'yb_test_planner_custom_plan_threshold'}
 
 STATISTICS_FETCH_ROWS_SIZE = 1000
 
@@ -307,6 +315,41 @@ def export_statistics(cursor, relation_names, out_dir):
         statistics_file.write(statistics_json)
 
 
+def export_ysql_pg_conf(cursor, out_dir):
+    ysql_pg_conf_file_name = f'{out_dir}/{YSQL_PG_CONF_FILE_NAME}'
+    print(f"Exporting ysql_pg_conf to {ysql_pg_conf_file_name}")
+    ysql_pg_conf_csv = "";
+    cursor.execute('SELECT name, setting, source from pg_settings where setting <> boot_val')
+    while True:
+        if pg_settings_rows := cursor.fetchmany(STATISTICS_FETCH_ROWS_SIZE):
+            for row in pg_settings_rows:
+                if row[0] in CBO_RELEVANT_GUC_PARAMS:
+                    ysql_pg_conf_csv += f'{row[0]}={row[1]}, '
+        else:
+            break
+    with open(ysql_pg_conf_file_name, 'w') as ysql_pg_conf_file:
+        ysql_pg_conf_file.write(ysql_pg_conf_csv)
+
+
+def export_gflags(host, out_dir):
+    gflags_file_name = f'{out_dir}/{GFLAGS_FILE_NAME}'
+    print(f"Exporting gflags to {gflags_file_name}")
+    gflags_dict = {}
+    try :
+        with urllib.request.urlopen(f'http://{host}:7000/api/v1/varz') as url:
+            data = json.load(url)
+            for flag in data['flags']:
+                if flag['type'] == 'Custom':
+                    gflags_dict[flag['name']] = flag['value']
+        
+        gflags_json = json.dumps(gflags_dict, indent = 4)
+        with open(gflags_file_name, 'w') as gflags_file:
+            gflags_file.write(gflags_json)
+    except Exception as e:
+        print ("Failed to get gflags.")
+        return
+
+
 def set_extra_float_digits(cursor, digits):
     cursor.execute(f'SET extra_float_digits = {digits}')
 
@@ -325,6 +368,8 @@ def main():
     set_extra_float_digits(cursor, 3)
     extract_ddl(connection_dict, relation_names, out_dir_abs_path)
     export_statistics(cursor, relation_names, out_dir_abs_path)
+    export_ysql_pg_conf(cursor, out_dir_abs_path)
+    export_gflags(args.host, out_dir_abs_path)
     cursor.close()
     conn.close()
 

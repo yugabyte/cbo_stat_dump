@@ -16,7 +16,7 @@ def get_connection_dict(args):
     user = args.user
     password = args.password
     db = args.database;
-    print ("Connecting to database host=%s, port=%s, user=%s, db=%s" % (host, port, user, db))
+    print (f'Connecting to database host={host}, port={port}, user={user}, db={db}')
 
     connectionDict = {
         'host': host,
@@ -86,34 +86,34 @@ def update_pg_statistic(cursor, stat_json):
                     # Escape backslash and double quotes with backslash, but single quote with single quote
                     val = ['"%s"' % e.replace('\\', '\\\\').replace('"', '\\"').replace('\'', '\'\'') for e in val]
                     sql_array = ', '.join(val)
-                    sql_array = "{%s}" % (sql_array)
+                    sql_array = f"{{{sql_array}}}"
                 else:
                     sql_array = str(val);
-                    sql_array = "{%s}" % (sql_array[1:-1])
-                sql_val = "array_in('%s', '%s'::regtype, -1)::anyarray" % (sql_array, columnType)
+                    sql_array = f'{{{sql_array[1:-1]}}}'
+                sql_val = F"array_in('{sql_array}', '{columnType}'::regtype, -1)::anyarray"
         elif isinstance(val, list):
             assert(columnType == 'real[]')
             sql_val = str(val);
-            sql_val = "'{%s}'::%s" % (sql_val[1:-1], columnType)
+            sql_val = f"'{{{sql_val[1:-1]}}}'::{columnType}"
         elif val is None:
             sql_val = 'NULL::' + columnType
         else:
             sql_val = str(stat_json[columnName]) + "::" + columnType
         columnValues += ", " + sql_val
 
-    starelid = "'%s.%s'::regclass" % (stat_json["nspname"], stat_json["relname"])
+    starelid = f"'{stat_json['nspname']}.{stat_json['relname']}'::regclass"
     # Find staattnum from starelid and "attname" from statistics
-    query = "SELECT a.attnum FROM pg_attribute a WHERE a.attrelid = %s and a.attname = '%s'" % (starelid, stat_json["attname"])
+    query = f"SELECT a.attnum FROM pg_attribute a WHERE a.attrelid = {starelid} and a.attname = '{stat_json['attname']}'"
     cursor.execute(query)
     staattnum = cursor.fetchone()[0]
-    query = """
-        DELETE FROM pg_statistic WHERE starelid = %s AND staattnum = %s;
-        INSERT INTO pg_statistic VALUES (%s, %s%s)
-        """ % (starelid, staattnum, starelid, staattnum, columnValues)
+    query = f"""
+        DELETE FROM pg_statistic WHERE starelid = {starelid} AND staattnum = {staattnum};
+        INSERT INTO pg_statistic VALUES ({starelid}, {staattnum}{columnValues})
+        """
     cursor.execute(query)
 
 def update_reltuples(cursor, relnamespace, relname, reltuples):
-    query = "UPDATE pg_class SET reltuples = %s WHERE relnamespace = '%s'::regnamespace AND (relname = '%s' OR relname = '%s_pkey');" % (reltuples, relnamespace, relname, relname)
+    query = f"UPDATE pg_class SET reltuples = {reltuples} WHERE relnamespace = '{relnamespace}'::regnamespace AND (relname = '{relname}' OR relname = '{relname}_pkey');"
     print (query)
     cursor.execute(query)
     # TODO: verify that 2 rows were updated.
@@ -128,8 +128,8 @@ def disable_write_on_sys_tables(cursor):
 
 def import_statistics(cursor, stat_file_name):
     if not os.path.exists(stat_file_name):
-        print ("Statistics file %s does not exist" % stat_file_name)
-    print ("Importing statistics from file %s" % stat_file_name)
+        print (f"Statistics file {stat_file_name} does not exist")
+    print (f"Importing statistics from file {stat_file_name}")
 
     statistics_json = json.load(open(stat_file_name, 'r'))
 

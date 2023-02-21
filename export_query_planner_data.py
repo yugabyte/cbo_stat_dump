@@ -59,6 +59,7 @@ QUERY_PLAN_FILE_NAME = 'query_plan.txt'
 STATISTICS_FILE_NAME = 'statistics.json'
 YSQL_PG_CONF_FILE_NAME = 'ysql_pg_conf.csv'
 GFLAGS_FILE_NAME = 'gflags.json'
+VERSION_FILE_NAME = 'version.txt'
 PG_CLASS_FILE_NAME = 'pg_class.json'
 DEFAULT_OUT_DIR_PREFIX = 'query_planner_data_'
 CBO_RELEVANT_GUC_PARAMS = {'yb_enable_optimizer_statistics', 
@@ -350,6 +351,14 @@ def export_gflags(host, out_dir):
         return
 
 
+def export_version(cursor, out_dir):
+    version_file_name = f'{out_dir}/{VERSION_FILE_NAME}'
+    print(f"Exporting version to {version_file_name}")
+    cursor.execute("select version()")
+    with open(version_file_name, 'w') as version_file:
+        version_file.write(cursor.fetchone()[0])
+
+
 def set_extra_float_digits(cursor, digits):
     cursor.execute(f'SET extra_float_digits = {digits}')
 
@@ -370,6 +379,7 @@ def main():
     export_statistics(cursor, relation_names, out_dir_abs_path)
     export_ysql_pg_conf(cursor, out_dir_abs_path)
     export_gflags(args.host, out_dir_abs_path)
+    export_version(cursor, out_dir_abs_path)
     cursor.close()
     conn.close()
 

@@ -34,8 +34,8 @@ def connect_database(connectionDict):
 
 def parse_cmd_line():
     parser = argparse.ArgumentParser(
-        prog = 'export_query_planner_data',
-        description = 'Exports statistics and other data to reproduce query plan'
+        prog = 'import_query_planner_stats',
+        description = 'Import statistics from JSON file to pg_class and pg_statistics system tables'
     )
     parser.add_argument('-H', '--host', help='Hostname or IP address, default localhost', default="localhost")
     parser.add_argument('-P', '--port', help='Port number, default 5433', default=5433)

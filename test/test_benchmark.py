@@ -2,11 +2,11 @@
 
 '''
 Objective :
- * Connect to a target database with TPCDS dataset. See below for steps to create such database.
- * For each query in tpcds_queries folder 
+ * Connect to a target database with benchmark dataset. See below for steps to create such database.
+ * For each query in <becnhmark>_queries folder 
     * export DDL, query plan and statistics from the target database.
     * Create a test database and run the DDL file, import the statistics and get the query plan.
-    * Compare the query plan and fail if these don't match.
+    * Compare the query plan and create a diff if plans don't match.
 '''
 
 import argparse
@@ -195,8 +195,8 @@ def diff_query_plans(outdir):
     with open(outdir + '/sim_query_plan.txt') as sim_query_plan:
         sim_query_plan_text = sim_query_plan.readlines()
 
-    query_plan_diff = difflib.unified_diff(target_query_plan_text, sim_query_plan_text, fromfile=outdir + '/query_plan.txt', tofile=outdir + '/sim_query_plan.txt')
-    if query_plan_diff is not None:
+    query_plan_diff = list(difflib.unified_diff(target_query_plan_text, sim_query_plan_text, fromfile=outdir + '/query_plan.txt', tofile=outdir + '/sim_query_plan.txt'))
+    if query_plan_diff:
         print('Test fail')
         with open(outdir + '/query_plan_diff.txt', 'w') as query_plan_diff_file:
             for line in query_plan_diff:

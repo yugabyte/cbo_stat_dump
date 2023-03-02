@@ -15,13 +15,11 @@ customer deployment.
 
 ```
 usage: 
-    export_query_planner_data 
-            [-h] 
-            [-H HOST] [-P PORT] -D DATABASE 
-            -u USER [-p PASSWORD] 
-            [-o OUT_DIR] 
-            [-q SQL_FILE] 
-            [--enable_optimizer_statistics]
+    export_query_planner_data [-h] 
+        [-H HOST] [-P PORT] -D DATABASE
+        -u USER [-p PASSWORD] 
+        [-o OUT_DIR] [-q SQL_FILE] 
+        [--enable_optimizer_statistics]
 ```
 
 This script can be run on a client and will connect to the customer database 
@@ -34,9 +32,12 @@ exported,
 | File name | Description |
 | --------- | ----------- |
 | `query.sql` | The same query which was provided to the script. |
-| `ddl.sql` | DDL for the object used in the query. |
 | `query_plan.txt` | Query plan generated on the customer system | 
+| `ddl.sql` | DDL for the object used in the query. |
 | `statistics.json` | Relevant information from pg_statistic and pg_class in JSON format |
+| `version.txt` | YugabyteDB version |
+| `ysql_pg_conf.csv` | Relevant GUC that have been overridden from default | 
+| `gflags.csv` | Relevant gFlags that have been overridden from default |
 
 ### Limitations
 * The script currently does not extract GUCs and gflags which may affect the 
@@ -68,10 +69,9 @@ from the JSON file.
 
 ```
 usage: 
-    export_query_planner_data 
-        [-h] 
-        [-H HOST] [-P PORT] -D DATABASE 
-        -u USER [-p PASSWORD] 
+    import_query_planner_stats [-h] 
+        [-H HOST] [-P PORT] 
+        -D DATABASE -u USER [-p PASSWORD] 
         -s STAT_FILE
 ```
 

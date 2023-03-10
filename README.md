@@ -10,12 +10,12 @@ accurately reproduce query plans.
 
 ## Exporting information from customer deployment
 
-The `export_query_planner_data.py` script is used to extract information from a 
+The `cbo_stat_dump.py` script is used to extract information from a 
 customer deployment. 
 
 ```
 usage: 
-    export_query_planner_data [-h] 
+    cbo_stat_dump [-h] 
         [-H HOST] [-P PORT] -D DATABASE
         -u USER [-p PASSWORD] 
         [-o OUT_DIR] [-q SQL_FILE] 
@@ -31,13 +31,13 @@ exported,
 
 | File name | Description |
 | --------- | ----------- |
-| `query.sql` | The same query which was provided to the script. |
-| `query_plan.txt` | Query plan generated on the customer system | 
-| `ddl.sql` | DDL for the object used in the query. |
-| `statistics.json` | Relevant information from pg_statistic and pg_class in JSON format |
 | `version.txt` | YugabyteDB version |
 | `ysql_pg_conf.csv` | Relevant GUC that have been overridden from default | 
 | `gflags.csv` | Relevant gFlags that have been overridden from default |
+| `ddl.sql` | DDL for the object used in the query. |
+| `statistics.json` | Relevant information from pg_statistic and pg_class in JSON format |
+| `query.sql` | The same query which was provided to the script. |
+| `query_plan.txt` | Query plan generated on the customer system | 
 
 ### Limitations
 * The script currently does not extract GUCs and gflags which may affect the 
@@ -56,7 +56,9 @@ digits in credit card numbers can be changed.
 
 ## Reproducing the query plan
 
-### Test deployment setup
+### Test setup
+
+The Yugabyte engineers can use the data exported from the customer deploy
 
 The support engineers need to create a test environment using the same software
 version and similar gflags as the customer deployment. The tables need to be 

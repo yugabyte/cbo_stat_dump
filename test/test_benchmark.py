@@ -22,6 +22,9 @@ import difflib
 def get_project_root() -> Path:
     return Path(__file__).parent.parent
 
+PSQL_BIN = 'psql'
+YSQLSH_BIN = 'ysqlsh'
+
 PROJECT_DIR = str(get_project_root())
 TEST_OUTDIR = PROJECT_DIR + '/test_out_dir'
 EXPORT_SCRIPT = 'export_query_planner_data.py'
@@ -36,13 +39,16 @@ def parse_arguments():
     parser.add_argument('--target_user', help='YugabyteDB username, default yugabyte', default='yugabyte')
     parser.add_argument('--target_password', help='Password, default no password')
     parser.add_argument('--target_database', help='Target Database name, default benchmark name with "_db" suffix')
+    parser.add_argument('--target_is_postgres', action='store_true', help='Use this option if target database is Postgres')
     parser.add_argument('--test_host', help='Hostname or IP address, default same as TARGET_HOST')
     parser.add_argument('--test_port', help='Port number, , default same as TARGET_PORT')
     parser.add_argument('--test_user', help='YugabyteDB username, default same as TARGET_USER')
     parser.add_argument('--test_password', help='Password, default same as TARGET_PASSWORD')
+    parser.add_argument('--test_is_postgres', action='store_true', help='Use this option if test database is Postgres')
     parser.add_argument('--ignore_ran_tests', action='store_true', help='Ignore tests for which an outdir exists')
     parser.add_argument('--enable_optimizer_statistics', action='store_true', help='Set yb_enable_optimizer_statistics=ON before running explain on query')
     parser.add_argument('--colocation', action='store_true', help='Creates test database with colocation ie. all tables are colocated on a single tablet')
+    parser.add_argument('--outdir', help='Test output directory')
 
     args = parser.parse_args()
 
@@ -56,6 +62,14 @@ def parse_arguments():
         args.test_user = args.target_user
     if args.test_password is None:
         args.test_password = args.target_password
+
+    if args.colocation and args.test_is_postgres:
+        sys.stderr.writelines(f'Colocation is a YB featurenot and not supported on Postgres\n')
+        sys.stderr.writelines(f'--test_is_postgres and --colocation cannot be used together\n')
+        sys.exit(1)
+
+    if args.outdir is None:
+        args.outdir = TEST_OUTDIR + '/' + args.benchmark
 
     return args
 
@@ -79,7 +93,7 @@ def export_query_plan(args, test_db_name, query_file, outdir):
 
     explain_query = "EXPLAIN %s" % sql_text
     test_conn, test_cursor = connect_test_database(args, test_db_name)
-    if args.enable_optimizer_statistics:
+    if args.enable_optimizer_statistics and not args.target_is_postgres:
         test_cursor.execute('SET yb_enable_optimizer_statistics=ON')
     test_cursor.execute(explain_query)    
     query_plan = test_cursor.fetchall()
@@ -146,7 +160,7 @@ def drop_test_database(args, test_db_name):
         print ('Dropped database ' + test_db_name)
 
 def run_export_script(args, query_outdir, query_file_name_abs):
-    cmd = ['python', PROJECT_DIR + '/' + EXPORT_SCRIPT, 
+    cmd = ['python3.10', PROJECT_DIR + '/' + EXPORT_SCRIPT, 
             '-H', args.target_host,
             '-P', str(args.target_port),
             '-D', args.target_database,
@@ -156,17 +170,22 @@ def run_export_script(args, query_outdir, query_file_name_abs):
             
     if args.target_password is not None:
         cmd.extend(['-p', args.target_password])
-    if args.enable_optimizer_statistics:
+    if args.enable_optimizer_statistics and not args.target_is_postgres:
         cmd.append('--enable_optimizer_statistics')
+    if args.target_is_postgres:
+        cmd.append('--postgres_mode')
     
     subprocess.run(cmd)
 
 def run_ddl_on_test_database(args, test_db_name, ddl_file):
-    assert_binary_in_path('ysqlsh')
+    SH_BIN = YSQLSH_BIN
+    if args.test_is_postgres:
+        SH_BIN = PSQL_BIN
+    assert_binary_in_path(SH_BIN)
 
     connection_str = get_test_connection_str(args)
 
-    cmd = ['ysqlsh']
+    cmd = [SH_BIN]
     cmd.extend(connection_str)
     cmd.extend(['-d', test_db_name])
     cmd.extend(['-f', ddl_file])
@@ -177,15 +196,17 @@ def run_ddl_on_test_database(args, test_db_name, ddl_file):
     subprocess.run(cmd, env=my_env)
 
 def run_import_script(args, test_db_name, statistics_file_name):
-    cmd = ['python', PROJECT_DIR + '/' + IMPORT_SCRIPT, 
+    cmd = ['python3.10', PROJECT_DIR + '/' + IMPORT_SCRIPT, 
             "-H", args.test_host,
             "-P", str(args.test_port),
             "-D", test_db_name,
             "-u", args.test_user,
             "-s", statistics_file_name]
-    if args.target_password is not None:
-        cmd.extend(['-p', args.target_password])
-    
+    if args.test_password is not None:
+        cmd.extend(['-p', args.test_password])
+    if args.test_is_postgres:
+        cmd.append('--postgres_mode')
+
     subprocess.run(cmd)
 
 def diff_query_plans(outdir):
@@ -215,7 +236,7 @@ def main():
         query_name = Path(query_file_name).stem
         query_file_name_abs = os.path.join(benchmark_queries_path, query_file_name)
         if os.path.isfile(query_file_name_abs):
-            query_outdir = TEST_OUTDIR + '/' + args.benchmark + '/' + query_name
+            query_outdir = args.outdir + '/' + query_name
             if args.ignore_ran_tests and os.path.exists(query_outdir):
                 print ('Ignoring previously ran test ' + args.benchmark + ' : ' + query_name)
                 continue

@@ -63,7 +63,8 @@ can be found from the following files,
     * `version.txt`
     * `ysql_pg_conf.csv`
     * `gflags.json`
-*Note*: As of now, the size and topology of the cluster do not affect the query
+
+> **Note**: As of now, the size and topology of the cluster do not affect the query
 plan. So the test cluster need not have the same topology as the customer. This 
 may change in future.
 

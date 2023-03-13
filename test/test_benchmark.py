@@ -27,8 +27,8 @@ YSQLSH_BIN = 'ysqlsh'
 
 PROJECT_DIR = str(get_project_root())
 TEST_OUTDIR = PROJECT_DIR + '/test_out_dir'
-EXPORT_SCRIPT = 'export_query_planner_data.py'
-IMPORT_SCRIPT = 'import_query_planner_stats.py'
+EXPORT_SCRIPT = 'cbo_stat_dump'
+IMPORT_SCRIPT = 'cbo_stat_load'
 
 def parse_arguments():
     parser = argparse.ArgumentParser('test_with_benchmark', 

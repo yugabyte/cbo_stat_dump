@@ -36,7 +36,7 @@ the tables. Further the script expects the test queries to be in the path
 `PROJECT_ROOT/test/<benchmark>_queries`.
 
 For each query in the benchmark suite, the test script will first run the 
-`export_query_plan_data.py` script to extract the DDL, query plan and 
+`cbo_stat_dump` script to extract the DDL, query plan and 
 statistics from the TARGET database. Then it will create a new database 
 on the TEST instance. The DDL will be run on the test database and statistics 
 will be imported. The query plan from the test deployment will be extracted

@@ -33,15 +33,13 @@ exported,
 | --------- | ----------- |
 | `version.txt` | YugabyteDB version |
 | `ysql_pg_conf.csv` | Relevant GUC that have been overridden from default | 
-| `gflags.csv` | Relevant gFlags that have been overridden from default |
+| `gflags.json` | Relevant gFlags that have been overridden from default |
 | `ddl.sql` | DDL for the object used in the query. |
 | `statistics.json` | Relevant information from pg_statistic and pg_class in JSON format |
 | `query.sql` | The same query which was provided to the script. |
 | `query_plan.txt` | Query plan generated on the customer system | 
 
 ### Limitations
-* The script currently does not extract GUCs and gflags which may affect the 
-query planner. 
 * The script is currently unable to extract CREATE statements for UDFs that may 
 be used in the query. 
 
@@ -56,28 +54,30 @@ digits in credit card numbers can be changed.
 
 ## Reproducing the query plan
 
-### Test setup
+The exported data can be used by Yugabyte engineers to reproduce the query plan
+using the following steps.
 
-The Yugabyte engineers can use the data exported from the customer deploy
+1. Create a test cluster with a debug build of the same software version as 
+the customer. Configure GUCs and gflags in the same way as the customer. These 
+can be found from the following files,
+    * `version.txt`
+    * `ysql_pg_conf.csv`
+    * `gflags.json`
+*Note*: As of now, the size and topology of the cluster do not affect the query
+plan. So the test cluster need not have the same topology as the customer. This 
+may change in future.
 
-The support engineers need to create a test environment using the same software
-version and similar gflags as the customer deployment. The tables need to be 
-created using the DDL exported from the customer.
+2. Create the schema with empty tables using the `ddl.sql` file.
 
-### Importing the statistics
-
-The `import_query_planner_stats.py` script can be used to import the statistics
-from the JSON file.
-
+3. Load statistics from `statistics.json` using the script `cbo_stat_load` as 
+follows.
 ```
 usage: 
-    import_query_planner_stats [-h] 
+    cbo_stat_load [-h] 
         [-H HOST] [-P PORT] 
         -D DATABASE -u USER [-p PASSWORD] 
         -s STAT_FILE
 ```
 
-After importing the statistics, the query plan should be reproducible on the 
-test system.
-
-
+4. Run the query in `query.sql` with `EXPLAIN` and the customers query plan in 
+`query_plan.txt` can be accurately reproduced.

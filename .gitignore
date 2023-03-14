@@ -129,3 +129,6 @@ dmypy.json
 .pyre/
 
 test_out_dir
+
+# VSCode
+.vscode/

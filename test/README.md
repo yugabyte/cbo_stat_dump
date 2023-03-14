@@ -39,5 +39,6 @@ For each query in the benchmark suite, the test script will first run the
 `cbo_stat_dump` script to extract the DDL, query plan and 
 statistics from the TARGET database. Then it will create a new database 
 on the TEST instance. The DDL will be run on the test database and statistics 
-will be imported. The query plan from the test deployment will be extracted
-and compared against the query plan from the target deployment.
+will be imported using the `cbo_stat_load` script. The query plan from the test 
+deployment will be extracted and compared against the query plan from the target 
+deployment.

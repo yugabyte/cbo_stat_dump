@@ -260,7 +260,7 @@ def export_statistics(cursor, relation_names, out_dir):
         relation_names_filter = f" and c.relname in ({relation_names_str}) "
     query = f"""
         SELECT row_to_json(t) FROM 
-            (SELECT c.relname, c.relpages, pyt  c.reltuples, n.nspname
+            (SELECT c.relname, c.relpages, c.reltuples, n.nspname
                 FROM pg_class c JOIN pg_namespace n on c.relnamespace = n.oid and n.nspname = 'public' {relation_names_filter}) t
         """
 

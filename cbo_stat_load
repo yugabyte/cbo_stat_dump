@@ -180,12 +180,15 @@ def main():
     if args.output_file is not None:
         with open(args.output_file,'w') as file:
             pass
-    connectionDict = get_connection_dict(args)
-    conn, cursor = connect_database(connectionDict)
+    cursor = None
+    if not args.dry_run:
+        connectionDict = get_connection_dict(args)
+        conn, cursor = connect_database(connectionDict)
     import_statistics(args, cursor)
-    conn.commit()
-    cursor.close()
-    conn.close()
+    if not args.dry_run:
+        conn.commit()
+        cursor.close()
+        conn.close()
 
 if __name__ == "__main__":
     main()

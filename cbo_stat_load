@@ -130,7 +130,7 @@ def update_pg_statistic(args, cursor, stat_json):
     # staattnum = cursor.fetchone()[0]
     staattnum_subquery = f"(SELECT a.attnum FROM pg_attribute a WHERE a.attrelid = {starelid} and a.attname = '{stat_json['attname']}')"
     query = f"""DELETE FROM pg_statistic WHERE starelid = {starelid} AND staattnum = {staattnum_subquery};
-INSERT INTO pg_statistic VALUES ({starelid}, {staattnum_subquery}{columnValues})"""
+INSERT INTO pg_statistic VALUES ({starelid}, {staattnum_subquery}{columnValues});"""
     output_and_execute_query(args, cursor, query)
 
 def update_reltuples(args, cursor, relnamespace, relname, reltuples, relpages):
@@ -138,15 +138,15 @@ def update_reltuples(args, cursor, relnamespace, relname, reltuples, relpages):
     output_and_execute_query(args, cursor, query)
 
 def enable_write_on_sys_tables(args, cursor):
-    query = "SET yb_non_ddl_txn_for_sys_tables_allowed = ON"
+    query = "SET yb_non_ddl_txn_for_sys_tables_allowed = ON;"
     output_and_execute_query(args, cursor, query)
 
 def disable_write_on_sys_tables(args, cursor):
-    query = "SET yb_non_ddl_txn_for_sys_tables_allowed = OFF"
+    query = "SET yb_non_ddl_txn_for_sys_tables_allowed = OFF;"
     output_and_execute_query(args, cursor, query)
 
 def update_pg_yb_catalog_version(args, cursor):
-    query = "update pg_yb_catalog_version set current_version=current_version+1 where db_oid=1"
+    query = "update pg_yb_catalog_version set current_version=current_version+1 where db_oid=1;"
     output_and_execute_query(args, cursor, query)
 
 def import_statistics(args, cursor):

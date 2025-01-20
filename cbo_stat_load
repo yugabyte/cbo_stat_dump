@@ -104,15 +104,19 @@ def update_pg_statistic(args, cursor, stat_json):
             if val is None:
                 sql_val = "NULL"
             else:
+                # Escape backslash and double quotes with backslash, but single quote with single quote
                 if isinstance(val[0], str):
                     # Escape backslash and double quotes with backslash, but single quote with single quote
-                    val = ['"%s"' % e.replace('\\', '\\\\').replace('"', '\\"').replace('\'', '\'\'') for e in val]
+                    val = [f"'%s'::{columnType}" % e.replace('\\', '\\\\').replace('"', '\\"').replace('\'', '\'\'') for e in val]
                     sql_array = ', '.join(val)
-                    sql_array = f"{{{sql_array}}}"
+                elif isinstance(val[0], dict):
+                    # Escape backslash and double quotes with backslash, but single quote with single quote
+                    val = [f"'%s'::{columnType}" % str(e).replace('"', '\\"').replace("'", '"').replace('True', 'true').replace('False', 'false') for e in val]
+                    sql_array = ', '.join(val)
                 else:
-                    sql_array = str(val);
-                    sql_array = f'{{{sql_array[1:-1]}}}'
-                sql_val = F"array_in('{sql_array}', '{columnType}'::regtype, -1)::anyarray"
+                    val = [f"'%s'::{columnType}" % e for e in val]
+                    sql_array = ', '.join(val)
+                sql_val = F"array[{sql_array}]::anyarray"
         elif isinstance(val, list):
             assert(columnType == 'real[]')
             sql_val = str(val);

@@ -50,6 +50,7 @@ QUERY_FILE_NAME = 'query.sql'
 DDL_FILE_NAME = 'ddl.sql'
 QUERY_PLAN_FILE_NAME = 'query_plan.txt'
 STATISTICS_FILE_NAME = 'statistics.json'
+EXT_STATISTICS_FILE_NAME = 'ext_statistics.json'
 YSQL_PG_CONF_FILE_NAME = 'ysql_pg_conf.csv'
 GFLAGS_FILE_NAME = 'gflags.json'
 VERSION_FILE_NAME = 'version.txt'
@@ -249,6 +250,51 @@ class CustomIndentEncoder(json.JSONEncoder):
         return json_repr
 
 
+def export_ext_statistics(cursor, relation_names, out_dir):
+    ext_statistics_file_name = f'{out_dir}/{EXT_STATISTICS_FILE_NAME}'
+    print(f"Exporting data from pg_statistic_ext and pg_statistics_ext_data to file {ext_statistics_file_name}")
+    
+    relation_names_filter = ""
+    if relation_names:
+        relation_names_str = ', '.join([f"\'{relation_name}\'" for relation_name in relation_names])
+        relation_names_filter = f" and c.relname in ({relation_names_str}) "
+    query = f"""
+        SELECT row_to_json(t) FROM 
+            (SELECT 
+                c.relname relname,
+                n.nspname nspname,
+                s.stxname,
+                s.stxnamespace,
+                s.stxowner,
+                s.stxstattarget,
+                s.stxkeys,
+                s.stxkind,
+                s.stxexprs,
+                d.stxdinherit,
+                d.stxdndistinct,
+                d.stxddependencies,
+                d.stxdmcv,
+                d.stxdexpr
+                FROM pg_class c 
+                    JOIN pg_namespace n on c.relnamespace = n.oid and n.nspname = 'public' {relation_names_filter}
+                    JOIN pg_statistic_ext s ON s.stxrelid = c.oid 
+                    JOIN pg_statistic_ext_data d ON s.oid = d.stxoid) t
+        """
+
+    cursor.execute(query)
+    list_pg_statistic = []
+    while True:
+        if pg_statistic_rows := cursor.fetchmany(STATISTICS_FETCH_ROWS_SIZE):
+            list_pg_statistic.extend(NoIndent(row[0]) for row in pg_statistic_rows)
+        else:
+            break
+    statistics_dict = {'pg_statistic_ext': list_pg_statistic}
+    statistics_json = json.dumps(statistics_dict, indent=4, cls=CustomIndentEncoder)
+
+    with open(ext_statistics_file_name, 'w') as statistics_file:
+        ext_statistics_file_name.write(statistics_json)
+    
+
 def export_statistics(cursor, relation_names, out_dir):
     statistics_file_name = f'{out_dir}/{STATISTICS_FILE_NAME}'
     print(f"Exporting data from pg_statistic and pg_class to file {statistics_file_name}")
@@ -256,7 +302,6 @@ def export_statistics(cursor, relation_names, out_dir):
     relation_names_filter = ""
     if relation_names:
         relation_names_str = ', '.join([f"\'{relation_name}\'" for relation_name in relation_names])
-
         relation_names_filter = f" and c.relname in ({relation_names_str}) "
     query = f"""
         SELECT row_to_json(t) FROM 
@@ -289,6 +334,11 @@ def export_statistics(cursor, relation_names, out_dir):
                 s.staop3,
                 s.staop4,
                 s.staop5,
+                s.stacoll1,
+                s.stacoll2,
+                s.stacoll3,
+                s.stacoll4,
+                s.stacoll5,
                 s.stanumbers1,
                 s.stanumbers2,
                 s.stanumbers3,
@@ -381,6 +431,7 @@ def main():
     set_extra_float_digits(cursor, 3)
     extract_ddl(connection_dict, relation_names, out_dir_abs_path, args.postgres_mode)
     export_statistics(cursor, relation_names, out_dir_abs_path)
+    export_ext_statistics(cursor, relation_names, out_dir_abs_path)
     if not args.postgres_mode:
         export_ysql_pg_conf(cursor, out_dir_abs_path)
         export_gflags(args.host, out_dir_abs_path)

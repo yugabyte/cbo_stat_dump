@@ -69,6 +69,56 @@ def output_and_execute_query(args, cursor, query):
     if not args.dry_run:
         cursor.execute(query)
 
+
+def update_pg_statistic_ext(args, cursor, stat_json):
+    columnTypes = {"stxname": "name",
+                   "stxnamespace": "oid",
+                   "stxowner": "oid",
+                   "stxstattarget": "integer",
+                   "stxkeys": "int2vector",
+                   "stxkind": "char[]",
+                   "stxexprs": "pg_node_tree"}
+
+    columnValues = ""
+    for columnName, columnType in columnTypes.items():
+        val = stat_json[columnName]
+        sql_val = ""
+        if (columnName.startswith('stavalues')):
+            # Convert a python list into SQL array string representation '{"...", "..."}'
+            sql_array = ""
+            if val is None:
+                sql_val = "NULL"
+            else:
+                sql_val = F"array["
+                if isinstance(val[0], str):
+                    # Escape backslash and double quotes with backslash, but single quote with single quote
+                    val = ['\'%s\'' % e.replace('\\', '\\\\').replace('\'', '\'\'') for e in val]
+                    sql_array = ', '.join(val)
+                    sql_array = f"{{{sql_array}}}"
+                else:
+                    sql_array = str(val);
+                    sql_array = f'{{{sql_array[1:-1]}}}'
+                sql_val = F"array['{sql_array}', '{columnType}'::regtype, -1)::anyarray"
+        elif isinstance(val, list):
+            assert(columnType == 'real[]')
+            sql_val = str(val);
+            sql_val = f"'{{{sql_val[1:-1]}}}'::{columnType}"
+        elif val is None:
+            sql_val = 'NULL::' + columnType
+        else:
+            sql_val = str(stat_json[columnName]) + "::" + columnType
+        columnValues += ", " + sql_val
+
+    starelid = f"'{stat_json['nspname']}.{stat_json['relname']}'::regclass"
+    # Find staattnum from starelid and "attname" from statistics
+    # query = f"SELECT a.attnum FROM pg_attribute a WHERE a.attrelid = {starelid} and a.attname = '{stat_json['attname']}'"
+    # cursor.execute(query)
+    # staattnum = cursor.fetchone()[0]
+    staattnum_subquery = f"(SELECT a.attnum FROM pg_attribute a WHERE a.attrelid = {starelid} and a.attname = '{stat_json['attname']}')"
+    query = f"""DELETE FROM pg_statistic WHERE starelid = {starelid} AND staattnum = {staattnum_subquery};
+INSERT INTO pg_statistic VALUES ({starelid}, {staattnum_subquery}{columnValues});"""
+    output_and_execute_query(args, cursor, query)
+
 def update_pg_statistic(args, cursor, stat_json):
     columnTypes = { "stainherit": "boolean",
                     "stanullfrac": "real",
@@ -84,6 +134,11 @@ def update_pg_statistic(args, cursor, stat_json):
                     "staop3": "oid",
                     "staop4": "oid",
                     "staop5": "oid",
+                    # "stacoll1": "oid",
+                    # "stacoll2": "oid",
+                    # "stacoll3": "oid",
+                    # "stacoll4": "oid",
+                    # "stacoll5": "oid",
                     "stanumbers1": "real[]",
                     "stanumbers2": "real[]",
                     "stanumbers3": "real[]",

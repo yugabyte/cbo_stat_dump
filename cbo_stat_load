@@ -106,17 +106,18 @@ def update_pg_statistic(args, cursor, stat_json):
             else:
                 if isinstance(val[0], str):
                     # Escape backslash and double quotes with backslash, but single quote with single quote
-                    val = [f"'%s'" % e.replace('\\', '\\\\').replace('"', '\\"').replace('\'', '\'\'') for e in val]
+                    val = [f'"%s"' % e.replace('\\', '\\\\').replace('"', '\\"').replace('\'', '\'\'') for e in val]
                     sql_array = ', '.join(val)
                 elif isinstance(val[0], dict):
                     # Array of JSON Objects, the type of the column must be jsonb
                     assert(stavaluesType == 'jsonb')
-                    val = [f"'%s'::jsonb" % str(e).replace('"', '\\"').replace("'", '"').replace('True', 'true').replace('False', 'false') for e in val]
+                    val = [f'"%s"' % str(e).replace('"', '\\\\\\\"').replace("'", '\\"').replace('True', 'true').replace('False', 'false') for e in val]
                     sql_array = ', '.join(val)
                 else:
                     val = [f"%s" % e for e in val]
                     sql_array = ', '.join(val)
-                sql_val = F"array[{sql_array}]::anyarray"
+                sql_array = f"'{{{sql_array}}}'"
+                sql_val = f"array_in({sql_array}, '{columnType}'::regtype, -1)::anyarray"
         elif isinstance(val, list):
             assert(columnType == 'real[]')
             sql_val = str(val);

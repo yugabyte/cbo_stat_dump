@@ -158,7 +158,7 @@ def get_process_output(cmd):
     return outmsg.decode('UTF-8')
 
 
-def extract_ddl(connection_dict, relation_names, output_dir, postgres_mode):
+def extract_ddl(connection_dict, schemas, relation_names, output_dir, postgres_mode):
     DDL_DUMP_BIN = YSQL_DUMP_BIN
     if postgres_mode:
         DDL_DUMP_BIN = PG_DUMP_BIN
@@ -183,6 +183,9 @@ def extract_ddl(connection_dict, relation_names, output_dir, postgres_mode):
                 ddl_tmp_file.write(outmsg)
     else:
         ddl_dump_cmd = password_prefix_str + f"{DDL_DUMP_BIN} {connection_params} -s"
+        if schemas:
+            schemas_str = ''.join([f' -n {schema.strip()}' for schema in schemas])
+            ddl_dump_cmd += schemas_str
         outmsg = get_process_output(ddl_dump_cmd)
         with open(ddl_tmp_file_name, 'w') as ddl_tmp_file:
             ddl_tmp_file.write(outmsg)
@@ -190,7 +193,7 @@ def extract_ddl(connection_dict, relation_names, output_dir, postgres_mode):
         with open(ddl_tmp_file_name, 'r') as ddl_tmp_file:
             for line in ddl_tmp_file:
                 if line.strip():
-                    m = re.match("(?:^--)|(?:^SET)|(?:^SELECT pg_catalog)|(?:^ALTER TABLE [\w\.]+ OWNER TO)", line)
+                    m = re.match("(?:^--)|(?:^SET)|(?:^SELECT pg_catalog)|(?:^ALTER .+ OWNER TO)|(?:^CREATE SCHEMA public;$)", line)
 
                     if m is None:
                         ddl_file.write(line)
@@ -401,7 +404,7 @@ def main():
         export_query_file(args.sql_file, out_dir_abs_path)
         export_query_plan(cursor, args.sql_file, out_dir_abs_path, args.enable_optimizer_statistics)
     set_extra_float_digits(cursor, 3)
-    extract_ddl(connection_dict, relation_names, out_dir_abs_path, args.postgres_mode)
+    extract_ddl(connection_dict, args.schemas, relation_names, out_dir_abs_path, args.postgres_mode)
     export_statistics(cursor, args.schemas, relation_names, out_dir_abs_path)
     if not args.postgres_mode:
         export_ysql_pg_conf(cursor, out_dir_abs_path)

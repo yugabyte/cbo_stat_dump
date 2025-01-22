@@ -280,7 +280,7 @@ def export_statistics(cursor, relation_names, out_dir):
                 n.nspname nspname,
                 c.relname relname,
                 a.attname attname,
-                t.typnamespace typnamespace,
+                (select nspname from pg_namespace where oid = t.typnamespace) typnspname,
                 t.typname typname,
                 s.stainherit,
                 s.stanullfrac,

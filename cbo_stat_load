@@ -95,10 +95,10 @@ def update_pg_statistic(args, cursor, stat_json):
                     "stanumbers4": "real[]",
                     "stanumbers5": "real[]"}
 
-    if 'typnamespace' not in stat_json:
+    if 'typnspname' not in stat_json:
         stavaluesType = 'pg_catalog'
     else:
-        stavaluesType = stat_json['typnamespace']
+        stavaluesType = stat_json['typnspname']
 
     stavaluesType = stavaluesType + '.' + stat_json["typname"]
     for i in range (1, 5):

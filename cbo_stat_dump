@@ -77,6 +77,8 @@ def parse_cmd_line():
     parser.add_argument('-P', '--port', help='Port number, default 5433', default=5433)
     parser.add_argument('-D', '--database', required=True, help='Database name, default yugabyte',
                         default="yugabyte")
+    parser.add_argument('-s', '--schemas', type=lambda x: x.split(','),
+                        help='Comma separated list of schema names. Use quotes to include spaces in schema names, default all schemas apart from pg_catalog, pg_toast, and information_schema')
     parser.add_argument('-u', '--user', required=True, help='YugabyteDB username, default yugabyte',
                         default="yugabyte")
     parser.add_argument('-p', '--password', help='Password, default no password')
@@ -96,6 +98,11 @@ def parse_cmd_line():
             '\n--enable_optimizer_statistics cannot be used with --postgres_mode\n\n')
         sys.exit(1)
 
+    if args.schemas and args.sql_file:
+        sys.stderr.writelines(
+            '\nIncompatible options: --schemas and --sql_file are mutually exclusive\n\n')
+        sys.exit(1)
+
     return args
 
 
@@ -104,7 +111,8 @@ def get_relations_from_json_recurse(query_plan_json):
     if 'Plans' in query_plan_json:
         for sub_plan_json in query_plan_json['Plans']:
             if 'Relation Name' in sub_plan_json:
-                relations.append(sub_plan_json['Relation Name'])
+                assert('Schema' in sub_plan_json)
+                relations.append(sub_plan_json['Schema'] + '.' + sub_plan_json['Relation Name'])
             relations = relations + (get_relations_from_json_recurse(sub_plan_json))
     return relations
 
@@ -112,7 +120,7 @@ def get_relations_from_json_recurse(query_plan_json):
 def get_relation_names_in_query(cursor, sql_file):
     with open(sql_file, 'r') as sql_f:
         sql_text = sql_f.read()
-    explain_query = f"EXPLAIN (FORMAT JSON) {sql_text}"
+    explain_query = f"EXPLAIN (FORMAT JSON, VERBOSE) {sql_text}"
 
     try:
         cursor.execute(explain_query)
@@ -123,7 +131,8 @@ def get_relation_names_in_query(cursor, sql_file):
 
     relations = []
     if 'Relation Name' in query_plan_json['Plan']:
-        relations.append(query_plan_json['Plan']['Relation Name'])
+        assert('Schema' in query_plan_json['Plan'])
+        relations.append(query_plan_json['Plan']['Schema'] + '.' + query_plan_json['Plan']['Relation Name'])
     relations.extend(get_relations_from_json_recurse(query_plan_json['Plan']))
     relations = list(dict.fromkeys(relations))
     return relations
@@ -252,22 +261,28 @@ class CustomIndentEncoder(json.JSONEncoder):
         return json_repr
 
 
-def export_statistics(cursor, relation_names, out_dir):
+def export_statistics(cursor, schemas, relation_names, out_dir):
     statistics_file_name = f'{out_dir}/{STATISTICS_FILE_NAME}'
     print(f"Exporting data from pg_statistic and pg_class to file {statistics_file_name}")
     statistics_dict = {}
 
     statistics_dict['version'] = __version__
-
+    
+    schemas_filter = ""
+    if schemas:
+        schemas_str = ', '.join([f"\'{schema.strip()}\'" for schema in schemas])
+        schemas_filter = f" and n.nspname in ({schemas_str}) "
+    else:
+        schemas_filter = " and n.nspname not in ('pg_catalog', 'pg_toast', 'information_schema')"
+    
     relation_names_filter = ""
     if relation_names:
-        relation_names_str = ', '.join([f"\'{relation_name}\'" for relation_name in relation_names])
-
-        relation_names_filter = f" and c.relname in ({relation_names_str}) "
+        relation_names_str = ', '.join([f"\'{relation_name}\'::regclass::oid" for relation_name in relation_names])
+        relation_names_filter = f" and c.oid in ({relation_names_str}) "
     query = f"""
         SELECT row_to_json(t) FROM
             (SELECT c.relname, c.relpages, c.reltuples, n.nspname
-                FROM pg_class c JOIN pg_namespace n on c.relnamespace = n.oid and n.nspname = 'public' {relation_names_filter}) t
+                FROM pg_class c JOIN pg_namespace n on c.relnamespace = n.oid {schemas_filter} {relation_names_filter}) t
         """
 
     cursor.execute(query)
@@ -307,7 +322,7 @@ def export_statistics(cursor, relation_names, out_dir):
                 s.stavalues4,
                 s.stavalues5
                 FROM pg_class c
-                    JOIN pg_namespace n on c.relnamespace = n.oid and n.nspname = 'public' {relation_names_filter}
+                    JOIN pg_namespace n on c.relnamespace = n.oid {schemas_filter} {relation_names_filter}
                     JOIN pg_statistic s ON s.starelid = c.oid
                     JOIN pg_attribute a ON c.oid = a.attrelid AND s.staattnum = a.attnum
                     JOIN pg_type t ON a.atttypid = t.oid) t
@@ -387,7 +402,7 @@ def main():
         export_query_plan(cursor, args.sql_file, out_dir_abs_path, args.enable_optimizer_statistics)
     set_extra_float_digits(cursor, 3)
     extract_ddl(connection_dict, relation_names, out_dir_abs_path, args.postgres_mode)
-    export_statistics(cursor, relation_names, out_dir_abs_path)
+    export_statistics(cursor, args.schemas, relation_names, out_dir_abs_path)
     if not args.postgres_mode:
         export_ysql_pg_conf(cursor, out_dir_abs_path)
         export_gflags(args.host, out_dir_abs_path)

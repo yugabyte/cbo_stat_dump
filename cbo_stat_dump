@@ -73,28 +73,18 @@ def parse_cmd_line():
         description='Exports statistics and other data to reproduce query plan',
         add_help=False
     )
-<<<<<<< HEAD
-    parser.add_argument('-H', '--host', help='Hostname or IP address, default localhost',
-                        default="localhost")
-    parser.add_argument('-P', '--port', help='Port number, default 5433', default=5433)
-    parser.add_argument('-D', '--database', required=True, help='Database name, default yugabyte',
-                        default="yugabyte")
-    parser.add_argument('-s', '--schemas', type=lambda x: x.split(','),
-                        help='Comma separated list of schema names. Use quotes to include spaces in schema names, default all schemas apart from pg_catalog, pg_toast, and information_schema')
-    parser.add_argument('-u', '--user', required=True, help='YugabyteDB username, default yugabyte',
-                        default="yugabyte")
-    parser.add_argument('-p', '--password', help='Password, default no password')
-=======
+    
     parser.add_argument('--help', action='store_true', help='show this help message and exit')
     parser.add_argument('-h', '--host', help='Hostname or IP address, default localhost',
                             default="localhost")
     parser.add_argument('-p', '--port', help='Port number, default 5432', default=5432)
     parser.add_argument('-d', '--database', help='Database name, default postgres',
                         default="postgres")
-    parser.add_argument('-U', '--user', help='Username, default postgres',
-                        default="postgres")
-    parser.add_argument('-W', '--password', help='Password, default no password')
->>>>>>> 492cfdd (Modify command line parameters to match psql)
+    parser.add_argument('-s', '--schemas', type=lambda x: x.split(','),
+                        help='Comma separated list of schema names. Use quotes to include spaces in schema names, default all schemas apart from pg_catalog, pg_toast, and information_schema')
+    parser.add_argument('-u', '--user', required=True, help='YugabyteDB username, default yugabyte',
+                        default="yugabyte")
+    parser.add_argument('-p', '--password', help='Password, default no password')
     parser.add_argument('-o', '--out_dir',
                         default='/tmp/' + DEFAULT_OUT_DIR_PREFIX + time.strftime("%Y%m%d-%H%M%S"),
                         help='Output directory')

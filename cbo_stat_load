@@ -48,9 +48,9 @@ def parse_cmd_line():
     parser.add_argument('-o', '--output_file', help='SQL file with insert statemsnts to import statistics')
     parser.add_argument('-d', '--dry_run', action='store_true', help='Do not execute insert statements, only produce output_file')
     parser.add_argument('--postgres_mode',action='store_true', help='Use this option to import statistics in Postgres')
-    
+
     args = parser.parse_args()
-    
+
     if args.dry_run:
         if args.output_file is None:
             args.output_file = f"import_statistics.sql"
@@ -58,7 +58,7 @@ def parse_cmd_line():
         if args.database is None:
             sys.stderr.writelines('\nMust specify target database with [--database|-D] option\n\n')
             sys.exit(1)
-    
+
     return args
 
 def output_and_execute_query(args, cursor, query):
@@ -174,7 +174,7 @@ def import_statistics(args, cursor):
     for pg_statistic_row_json in statistics_json['pg_statistic']:
         print (pg_statistic_row_json["nspname"] + "." + pg_statistic_row_json["relname"] + "." + pg_statistic_row_json["attname"])
         update_pg_statistic(args, cursor, pg_statistic_row_json)
-        
+
     if not args.postgres_mode:
         update_pg_yb_catalog_version(args, cursor)
         disable_write_on_sys_tables(args, cursor)

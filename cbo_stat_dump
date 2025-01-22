@@ -55,10 +55,10 @@ GFLAGS_FILE_NAME = 'gflags.json'
 VERSION_FILE_NAME = 'version.txt'
 PG_CLASS_FILE_NAME = 'pg_class.json'
 DEFAULT_OUT_DIR_PREFIX = 'query_planner_data_'
-CBO_RELEVANT_GUC_PARAMS = {'yb_enable_optimizer_statistics', 
-                           'yb_bnl_batch_size', 
-                           'yb_enable_expression_pushdown', 
-                           'yb_enable_geolocation_costing', 
+CBO_RELEVANT_GUC_PARAMS = {'yb_enable_optimizer_statistics',
+                           'yb_bnl_batch_size',
+                           'yb_enable_expression_pushdown',
+                           'yb_enable_geolocation_costing',
                            'yb_test_planner_custom_plan_threshold'}
 
 STATISTICS_FETCH_ROWS_SIZE = 1000
@@ -153,7 +153,7 @@ def extract_ddl(connection_dict, relation_names, output_dir, postgres_mode):
     if not shutil.which(DDL_DUMP_BIN):
         sys.stderr.writelines(f"{DDL_DUMP_BIN} binary not found.\n\n")
         sys.exit(1)
-    
+
     ddl_file_name = f'{output_dir}/{DDL_FILE_NAME}'
     print(f"Exporting DDL to {ddl_file_name}")
     ddl_tmp_file_name = ddl_file_name + '.tmp'
@@ -259,7 +259,7 @@ def export_statistics(cursor, relation_names, out_dir):
 
         relation_names_filter = f" and c.relname in ({relation_names_str}) "
     query = f"""
-        SELECT row_to_json(t) FROM 
+        SELECT row_to_json(t) FROM
             (SELECT c.relname, c.relpages, c.reltuples, n.nspname
                 FROM pg_class c JOIN pg_namespace n on c.relnamespace = n.oid and n.nspname = 'public' {relation_names_filter}) t
         """
@@ -269,10 +269,10 @@ def export_statistics(cursor, relation_names, out_dir):
     list_pg_class = [NoIndent(row[0]) for row in rows_pg_class]
     statistics_dict = {'pg_class': list_pg_class}
     query = f"""
-        SELECT row_to_json(t) FROM 
-            (SELECT 
-                c.relname relname, 
-                a.attname attname, 
+        SELECT row_to_json(t) FROM
+            (SELECT
+                c.relname relname,
+                a.attname attname,
                 t.typname typname,
                 n.nspname nspname,
                 s.stainherit,
@@ -299,9 +299,9 @@ def export_statistics(cursor, relation_names, out_dir):
                 s.stavalues3,
                 s.stavalues4,
                 s.stavalues5
-                FROM pg_class c 
+                FROM pg_class c
                     JOIN pg_namespace n on c.relnamespace = n.oid and n.nspname = 'public' {relation_names_filter}
-                    JOIN pg_statistic s ON s.starelid = c.oid 
+                    JOIN pg_statistic s ON s.starelid = c.oid
                     JOIN pg_attribute a ON c.oid = a.attrelid AND s.staattnum = a.attnum
                     JOIN pg_type t ON a.atttypid = t.oid) t
         """
@@ -346,7 +346,7 @@ def export_gflags(host, out_dir):
             for flag in data['flags']:
                 if flag['type'] == 'Custom':
                     gflags_dict[flag['name']] = flag['value']
-        
+
         gflags_json = json.dumps(gflags_dict, indent = 4)
         with open(gflags_file_name, 'w') as gflags_file:
             gflags_file.write(gflags_json)

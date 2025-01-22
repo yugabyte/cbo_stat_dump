@@ -12,6 +12,9 @@ import shutil
 import subprocess
 import sys
 import time
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(SCRIPT_DIR))
+from cbo_stat_dump import __version__
 
 from _ctypes import PyObj_FromPtr
 from pathlib import Path
@@ -252,6 +255,9 @@ class CustomIndentEncoder(json.JSONEncoder):
 def export_statistics(cursor, relation_names, out_dir):
     statistics_file_name = f'{out_dir}/{STATISTICS_FILE_NAME}'
     print(f"Exporting data from pg_statistic and pg_class to file {statistics_file_name}")
+    statistics_dict = {}
+
+    statistics_dict['version'] = __version__
 
     relation_names_filter = ""
     if relation_names:
@@ -267,7 +273,7 @@ def export_statistics(cursor, relation_names, out_dir):
     cursor.execute(query)
     rows_pg_class = cursor.fetchall()
     list_pg_class = [NoIndent(row[0]) for row in rows_pg_class]
-    statistics_dict = {'pg_class': list_pg_class}
+    statistics_dict['pg_class'] = list_pg_class
     query = f"""
         SELECT row_to_json(t) FROM
             (SELECT

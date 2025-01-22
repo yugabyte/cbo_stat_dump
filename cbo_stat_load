@@ -8,8 +8,13 @@ Loads statistics from JSON file to a test database.
 
 import psycopg2
 import argparse
+import sys
 import os, platform
 import json
+import packaging.version as version
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(SCRIPT_DIR))
+from cbo_stat_dump import __version__
 
 def get_connection_dict(args):
     envOpts = os.environ
@@ -159,12 +164,25 @@ def update_pg_yb_catalog_version(args, cursor):
     query = "update pg_yb_catalog_version set current_version=current_version+1 where db_oid=1;"
     output_and_execute_query(args, cursor, query)
 
+def check_version_compatibility(version_string):
+    current_version = version.parse(__version__)
+    stat_version = version.parse(version_string)
+    
+    if (current_version == stat_version or
+        current_version.major == stat_version.major):
+        return
+    else:
+        sys.stderr.writelines(f'\nVersion mismatch: statistics version ({version_string}) does not match with version of cbo_stat_load ({__version__})\n\n')
+        sys.exit(1)
+
 def import_statistics(args, cursor):
     if not os.path.exists(args.stat_file):
         print (f"Statistics file {args.stat_file} does not exist")
     print (f"Importing statistics from file {args.stat_file}")
 
     statistics_json = json.load(open(args.stat_file, 'r'))
+    if ('version' in statistics_json):
+        check_version_compatibility(statistics_json["version"])
 
     if not args.postgres_mode:
         enable_write_on_sys_tables(args, cursor)

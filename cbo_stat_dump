@@ -67,26 +67,33 @@ STATISTICS_FETCH_ROWS_SIZE = 1000
 def parse_cmd_line():
     parser = argparse.ArgumentParser(
         prog='cbo_stat_dump',
-        description='Exports statistics and other data to reproduce query plan'
+        description='Exports statistics and other data to reproduce query plan',
+        add_help=False
     )
-    parser.add_argument('-H', '--host', help='Hostname or IP address, default localhost',
-                        default="localhost")
-    parser.add_argument('-P', '--port', help='Port number, default 5433', default=5433)
-    parser.add_argument('-D', '--database', required=True, help='Database name, default yugabyte',
-                        default="yugabyte")
-    parser.add_argument('-u', '--user', required=True, help='YugabyteDB username, default yugabyte',
-                        default="yugabyte")
-    parser.add_argument('-p', '--password', help='Password, default no password')
+    parser.add_argument('--help', action='store_true', help='show this help message and exit')
+    parser.add_argument('-h', '--host', help='Hostname or IP address, default localhost',
+                            default="localhost")
+    parser.add_argument('-p', '--port', help='Port number, default 5432', default=5432)
+    parser.add_argument('-d', '--database', help='Database name, default postgres',
+                        default="postgres")
+    parser.add_argument('-U', '--user', help='Username, default postgres',
+                        default="postgres")
+    parser.add_argument('-W', '--password', help='Password, default no password')
     parser.add_argument('-o', '--out_dir',
                         default='/tmp/' + DEFAULT_OUT_DIR_PREFIX + time.strftime("%Y%m%d-%H%M%S"),
                         help='Output directory')
-    parser.add_argument('-q', '--sql_file')
+    parser.add_argument('-q', '--query_file',
+                        help='File containing query that needs to be debugged')
     parser.add_argument('--postgres_mode', action='store_true',
                         help='Use this mode to export data from Postgres')
     parser.add_argument('--enable_optimizer_statistics', action=argparse.BooleanOptionalAction,
                         help='Set yb_enable_optimizer_statistics=ON before running explain on query')
 
     args = parser.parse_args()
+
+    if args.help:
+        parser.print_help()
+        sys.exit(0)
 
     if args.postgres_mode and args.enable_optimizer_statistics:
         sys.stderr.writelines(

@@ -271,10 +271,11 @@ def export_statistics(cursor, relation_names, out_dir):
     query = f"""
         SELECT row_to_json(t) FROM
             (SELECT
+                n.nspname nspname,
                 c.relname relname,
                 a.attname attname,
+                t.typnamespace typnamespace,
                 t.typname typname,
-                n.nspname nspname,
                 s.stainherit,
                 s.stanullfrac,
                 s.stawidth,

@@ -90,7 +90,12 @@ def update_pg_statistic(args, cursor, stat_json):
                     "stanumbers4": "real[]",
                     "stanumbers5": "real[]"}
 
-    stavaluesType = stat_json["typname"]
+    if 'typnamespace' not in stat_json:
+        stavaluesType = 'pg_catalog'
+    else:
+        stavaluesType = stat_json['typnamespace']
+
+    stavaluesType = stavaluesType + '.' + stat_json["typname"]
     for i in range (1, 5):
         columnTypes["stavalues" + str(i)] = stavaluesType
 
@@ -110,7 +115,7 @@ def update_pg_statistic(args, cursor, stat_json):
                     sql_array = ', '.join(val)
                 elif isinstance(val[0], dict):
                     # Array of JSON Objects, the type of the column must be jsonb
-                    assert(stavaluesType == 'jsonb')
+                    assert(stavaluesType == 'pg_catalog.jsonb')
                     val = [f'"%s"' % str(e).replace('"', '\\\\\\\"').replace("'", '\\"').replace('True', 'true').replace('False', 'false') for e in val]
                     sql_array = ', '.join(val)
                 else:

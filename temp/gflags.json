@@ -1,0 +1,18 @@
+{
+    "cluster_uuid": "3b6d8b60-ecb9-47be-b399-eab4a320673b",
+    "default_memory_limit_to_ram_ratio": "0.34999999999999998",
+    "fs_data_dirs": "/Users/gaurav/var/data",
+    "instance_uuid_override": "1e6006cac67f4b5f94f505d032b8c2e9",
+    "master_addresses": "127.0.0.1:7100",
+    "master_enable_metrics_snapshotter": "true",
+    "mem_tracker_tcmalloc_gc_release_bytes": "60129542",
+    "metrics_snapshotter_tserver_metrics_whitelist": "handler_latency_yb_tserver_TabletServerService_Read_count,handler_latency_yb_tserver_TabletServerService_Write_count,handler_latency_yb_tserver_TabletServerService_Read_sum,handler_latency_yb_tserver_TabletServerService_Write_sum,disk_usage,cpu_usage,node_up",
+    "replication_factor": "1",
+    "server_broadcast_addresses": "127.0.0.1:7100",
+    "server_dump_info_path": "/Users/gaurav/var/data/master-info",
+    "server_tcmalloc_max_total_thread_cache_bytes": "150323855",
+    "stop_on_parent_termination": "true",
+    "undefok": "stop_on_parent_termination",
+    "yb_num_shards_per_tserver": "1",
+    "ysql_num_shards_per_tserver": "1"
+}

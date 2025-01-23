@@ -1,0 +1,1 @@
+enable_seqscan=off, shared_buffers=16384, 

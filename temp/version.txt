@@ -1,0 +1,1 @@
+PostgreSQL 11.2-YB-2024.1.4.1-b0 on arm-apple-darwin23.6.0, compiled by Apple clang version 16.0.0 (clang-1600.0.26.6), 64-bit

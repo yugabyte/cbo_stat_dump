@@ -1,2 +1,0 @@
-SET enable_seqscan='off';
-SET shared_buffers='16384';

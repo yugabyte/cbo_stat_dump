@@ -1,5 +1,0 @@
-Hash Join  (cost=11.25..22.62 rows=100 width=8)
-  Hash Cond: (t1.k1 = t2.k1)
-  ->  Seq Scan on t t1  (cost=0.00..10.00 rows=100 width=4)
-  ->  Hash  (cost=10.00..10.00 rows=100 width=4)
-        ->  Seq Scan on t t2  (cost=0.00..10.00 rows=100 width=4)

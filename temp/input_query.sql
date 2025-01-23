@@ -1,1 +1,0 @@
-select * from t t1 join test.t t2 on t1.k1 = t2.k1;

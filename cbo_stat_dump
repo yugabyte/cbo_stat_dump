@@ -114,9 +114,8 @@ def parse_cmd_line():
     parser.add_argument('-d', '--database', help='Database name')
     parser.add_argument('-s', '--schemas', type=lambda x: x.split(','),
                         help='Comma separated list of schema names. Use quotes to include spaces in schema names, default all schemas apart from pg_catalog, pg_toast, and information_schema')
-    parser.add_argument('-u', '--username', required=True, help='YugabyteDB username, default yugabyte',
-                        default="yugabyte")
-    parser.add_argument('-p', '--password', help='Password, default no password')
+    parser.add_argument('-u', '--username', help='Username')
+    parser.add_argument('-W', '--password', help='Password, default no password')
     parser.add_argument('-o', '--out_dir',
                         default='/tmp/' + DEFAULT_OUT_DIR_PREFIX + time.strftime("%Y%m%d-%H%M%S"),
                         help='Output directory')

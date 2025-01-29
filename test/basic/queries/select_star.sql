@@ -1,0 +1,1 @@
+SELECT * FROM all_types_100000;

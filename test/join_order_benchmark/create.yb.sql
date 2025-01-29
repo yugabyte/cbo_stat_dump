@@ -7,7 +7,7 @@ CREATE TABLE public.aka_name (
     name_pcode_nf character varying(5),
     surname_pcode character varying(5),
     md5sum character varying(32),
-    CONSTRAINT aka_name_pkey PRIMARY KEY(id)
+    CONSTRAINT aka_name_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.aka_title (
     id integer NOT NULL,
@@ -22,7 +22,7 @@ CREATE TABLE public.aka_title (
     episode_nr integer,
     note text,
     md5sum character varying(32),
-    CONSTRAINT aka_title_pkey PRIMARY KEY(id)
+    CONSTRAINT aka_title_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.cast_info (
     id integer NOT NULL,
@@ -32,7 +32,7 @@ CREATE TABLE public.cast_info (
     note text,
     nr_order integer,
     role_id integer NOT NULL,
-    CONSTRAINT cast_info_pkey PRIMARY KEY(id)
+    CONSTRAINT cast_info_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.char_name (
     id integer NOT NULL,
@@ -42,12 +42,12 @@ CREATE TABLE public.char_name (
     name_pcode_nf character varying(5),
     surname_pcode character varying(5),
     md5sum character varying(32),
-    CONSTRAINT char_name_pkey PRIMARY KEY(id)
+    CONSTRAINT char_name_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.comp_cast_type (
     id integer NOT NULL,
     kind character varying(32) NOT NULL,
-    CONSTRAINT comp_cast_type_pkey PRIMARY KEY(id)
+    CONSTRAINT comp_cast_type_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.company_name (
     id integer NOT NULL,
@@ -57,40 +57,40 @@ CREATE TABLE public.company_name (
     name_pcode_nf character varying(5),
     name_pcode_sf character varying(5),
     md5sum character varying(32),
-    CONSTRAINT company_name_pkey PRIMARY KEY(id)
+    CONSTRAINT company_name_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.company_type (
     id integer NOT NULL,
     kind character varying(32) NOT NULL,
-    CONSTRAINT company_type_pkey PRIMARY KEY(id)
+    CONSTRAINT company_type_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.complete_cast (
     id integer NOT NULL,
     movie_id integer,
     subject_id integer NOT NULL,
     status_id integer NOT NULL,
-    CONSTRAINT complete_cast_pkey PRIMARY KEY(id)
+    CONSTRAINT complete_cast_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.info_type (
     id integer NOT NULL,
     info character varying(32) NOT NULL,
-    CONSTRAINT info_type_pkey PRIMARY KEY(id)
+    CONSTRAINT info_type_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.keyword (
     id integer NOT NULL,
     keyword text NOT NULL,
     phonetic_code character varying(5),
-    CONSTRAINT keyword_pkey PRIMARY KEY(id)
+    CONSTRAINT keyword_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.kind_type (
     id integer NOT NULL,
     kind character varying(15) NOT NULL,
-    CONSTRAINT kind_type_pkey PRIMARY KEY(id)
+    CONSTRAINT kind_type_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.link_type (
     id integer NOT NULL,
     link character varying(32) NOT NULL,
-    CONSTRAINT link_type_pkey PRIMARY KEY(id)
+    CONSTRAINT link_type_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.movie_companies (
     id integer NOT NULL,
@@ -98,7 +98,7 @@ CREATE TABLE public.movie_companies (
     company_id integer NOT NULL,
     company_type_id integer NOT NULL,
     note text,
-    CONSTRAINT movie_companies_pkey PRIMARY KEY(id)
+    CONSTRAINT movie_companies_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.movie_info (
     id integer NOT NULL,
@@ -106,7 +106,7 @@ CREATE TABLE public.movie_info (
     info_type_id integer NOT NULL,
     info text NOT NULL,
     note text,
-    CONSTRAINT movie_info_pkey PRIMARY KEY(id)
+    CONSTRAINT movie_info_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.movie_info_idx (
     id integer NOT NULL,
@@ -114,20 +114,20 @@ CREATE TABLE public.movie_info_idx (
     info_type_id integer NOT NULL,
     info text NOT NULL,
     note text,
-    CONSTRAINT movie_info_idx_pkey PRIMARY KEY(id)
+    CONSTRAINT movie_info_idx_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.movie_keyword (
     id integer NOT NULL,
     movie_id integer NOT NULL,
     keyword_id integer NOT NULL,
-    CONSTRAINT movie_keyword_pkey PRIMARY KEY(id)
+    CONSTRAINT movie_keyword_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.movie_link (
     id integer NOT NULL,
     movie_id integer NOT NULL,
     linked_movie_id integer NOT NULL,
     link_type_id integer NOT NULL,
-    CONSTRAINT movie_link_pkey PRIMARY KEY(id)
+    CONSTRAINT movie_link_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.name (
     id integer NOT NULL,
@@ -139,7 +139,7 @@ CREATE TABLE public.name (
     name_pcode_nf character varying(5),
     surname_pcode character varying(5),
     md5sum character varying(32),
-    CONSTRAINT name_pkey PRIMARY KEY(id)
+    CONSTRAINT name_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.person_info (
     id integer NOT NULL,
@@ -147,12 +147,12 @@ CREATE TABLE public.person_info (
     info_type_id integer NOT NULL,
     info text NOT NULL,
     note text,
-    CONSTRAINT person_info_pkey PRIMARY KEY(id)
+    CONSTRAINT person_info_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.role_type (
     id integer NOT NULL,
     role character varying(32) NOT NULL,
-    CONSTRAINT role_type_pkey PRIMARY KEY(id)
+    CONSTRAINT role_type_pkey PRIMARY KEY(id ASC)
 );
 CREATE TABLE public.title (
     id integer NOT NULL,
@@ -167,31 +167,33 @@ CREATE TABLE public.title (
     episode_nr integer,
     series_years character varying(49),
     md5sum character varying(32),
-    CONSTRAINT title_pkey PRIMARY KEY(id)
+    CONSTRAINT title_pkey PRIMARY KEY(id ASC)
 );
-CREATE INDEX company_id_movie_companies ON public.movie_companies USING lsm (company_id);
-CREATE INDEX company_type_id_movie_companies ON public.movie_companies USING lsm (company_type_id);
-CREATE INDEX info_type_id_movie_info ON public.movie_info USING lsm (info_type_id);
-CREATE INDEX info_type_id_movie_info_idx ON public.movie_info_idx USING lsm (info_type_id);
-CREATE INDEX info_type_id_person_info ON public.person_info USING lsm (info_type_id);
-CREATE INDEX keyword_id_movie_keyword ON public.movie_keyword USING lsm (keyword_id);
-CREATE INDEX kind_id_aka_title ON public.aka_title USING lsm (kind_id);
-CREATE INDEX kind_id_title ON public.title USING lsm (kind_id);
-CREATE INDEX link_type_id_movie_link ON public.movie_link USING lsm (link_type_id);
-CREATE INDEX linked_movie_id_movie_link ON public.movie_link USING lsm (linked_movie_id);
-CREATE INDEX movie_id_aka_title ON public.aka_title USING lsm (movie_id);
-CREATE INDEX movie_id_cast_info ON public.cast_info USING lsm (movie_id);
-CREATE INDEX movie_id_complete_cast ON public.complete_cast USING lsm (movie_id);
-CREATE INDEX movie_id_movie_companies ON public.movie_companies USING lsm (movie_id);
-CREATE INDEX movie_id_movie_info ON public.movie_info USING lsm (movie_id);
-CREATE INDEX movie_id_movie_info_idx ON public.movie_info_idx USING lsm (movie_id);
-CREATE INDEX movie_id_movie_keyword ON public.movie_keyword USING lsm (movie_id);
-CREATE INDEX movie_id_movie_link ON public.movie_link USING lsm (movie_id);
-CREATE INDEX person_id_aka_name ON public.aka_name USING lsm (person_id);
-CREATE INDEX person_id_cast_info ON public.cast_info USING lsm (person_id);
-CREATE INDEX person_id_person_info ON public.person_info USING lsm (person_id);
-CREATE INDEX person_role_id_cast_info ON public.cast_info USING lsm (person_role_id);
-CREATE INDEX role_id_cast_info ON public.cast_info USING lsm (role_id);
+CREATE INDEX company_id_movie_companies ON public.movie_companies USING lsm (company_id ASC);
+CREATE INDEX company_type_id_movie_companies ON public.movie_companies USING lsm (company_type_id ASC);
+CREATE INDEX info_type_id_movie_info ON public.movie_info USING lsm (info_type_id ASC);
+CREATE INDEX info_type_id_movie_info_idx ON public.movie_info_idx USING lsm (info_type_id ASC);
+CREATE INDEX info_type_id_person_info ON public.person_info USING lsm (info_type_id ASC);
+CREATE INDEX keyword_id_movie_keyword ON public.movie_keyword USING lsm (keyword_id ASC);
+CREATE INDEX kind_id_aka_title ON public.aka_title USING lsm (kind_id ASC);
+CREATE INDEX kind_id_title ON public.title USING lsm (kind_id ASC);
+CREATE INDEX link_type_id_movie_link ON public.movie_link USING lsm (link_type_id ASC);
+CREATE INDEX linked_movie_id_movie_link ON public.movie_link USING lsm (linked_movie_id ASC);
+CREATE INDEX movie_id_aka_title ON public.aka_title USING lsm (movie_id ASC);
+CREATE INDEX movie_id_cast_info ON public.cast_info USING lsm (movie_id ASC);
+CREATE INDEX movie_id_complete_cast ON public.complete_cast USING lsm (movie_id ASC);
+CREATE INDEX movie_id_movie_companies ON public.movie_companies USING lsm (movie_id ASC);
+CREATE INDEX movie_id_movie_info ON public.movie_info USING lsm (movie_id ASC);
+CREATE INDEX movie_id_movie_info_idx ON public.movie_info_idx USING lsm (movie_id ASC);
+CREATE INDEX movie_id_movie_keyword ON public.movie_keyword USING lsm (movie_id ASC);
+CREATE INDEX movie_id_movie_link ON public.movie_link USING lsm (movie_id ASC);
+CREATE INDEX person_id_aka_name ON public.aka_name USING lsm (person_id ASC);
+CREATE INDEX person_id_cast_info ON public.cast_info USING lsm (person_id ASC);
+CREATE INDEX person_id_person_info ON public.person_info USING lsm (person_id ASC);
+CREATE INDEX person_role_id_cast_info ON public.cast_info USING lsm (person_role_id ASC);
+CREATE INDEX role_id_cast_info ON public.cast_info USING lsm (role_id ASC);
+
+SET yb_non_ddl_txn_for_sys_tables_allowed = ON;
 
 UPDATE pg_class SET reltuples = 901343, relpages = 0, relallvisible = 0 WHERE relnamespace = 'public'::regnamespace AND (relname = 'aka_name' OR relname = 'aka_name_pkey');
 UPDATE pg_class SET reltuples = 901343, relpages = 0, relallvisible = 0 WHERE relnamespace = 'public'::regnamespace AND (relname = 'aka_name_pkey' OR relname = 'aka_name_pkey_pkey');
@@ -474,3 +476,6 @@ DELETE FROM pg_statistic WHERE starelid = 'public.title'::regclass AND staattnum
 INSERT INTO pg_statistic VALUES ('public.title'::regclass, (SELECT a.attnum FROM pg_attribute a WHERE a.attrelid = 'public.title'::regclass and a.attname = 'series_years'), False::boolean, 0.9656::real, 9::integer, 227::real, 1::smallint, 2::smallint, 3::smallint, 0::smallint, 0::smallint, 98::oid, 664::oid, 664::oid, 0::oid, 0::oid, 100::oid, 100::oid, 100::oid, 0::oid, 0::oid, '{0.0023333333, 0.0020333333, 0.0014, 0.0013666666, 0.0013666666, 0.0012666667, 0.0012666667, 0.0012666667, 0.0012, 0.0010666667, 0.0009, 0.00073333335, 0.0007, 0.0007, 0.0007, 0.00056666665, 0.0005, 0.00043333333, 0.00043333333, 0.0004, 0.0004, 0.00036666667, 0.00036666667, 0.00033333333, 0.00033333333, 0.0003, 0.00026666667, 0.00026666667, 0.00026666667}'::real[], NULL::real[], '{-0.020022364}'::real[], NULL::real[], NULL::real[], array_in('{"2012-????", "2011-????", "2006-????", "2008-????", "2009-????", "2005-????", "2007-????", "2010-????", "2003-????", "2004-????", "2013-????", "2001-????", "1999-????", "2000-????", "2002-????", "1998-????", "1997-????", "1992-????", "1995-????", "1985-????", "1990-????", "1987-????", "1988-????", "1980-????", "1984-????", "1979-????", "1986-????", "1993-????", "1996-????"}', 'pg_catalog.varchar'::regtype, -1)::anyarray, array_in('{"1918-1947", "1948-1954", "1949-1960", "1950-1952", "1950-????", "1951-????", "1952-????", "1954-????", "1955-????", "1955-????", "1956-????", "1957-????", "1959-1960", "1960-1961", "1960-????", "1961-1967", "1961-????", "1962-1963", "1962-????", "1963-1967", "1963-????", "1964-????", "1965-????", "1966-????", "1966-????", "1967-1968", "1967-????", "1967-????", "1968-????", "1968-????", "1969-????", "1969-????", "1970-1972", "1970-????", "1971-????", "1971-????", "1972-1983", "1973-1974", "1973-1978", "1973-????", "1974-????", "1974-????", "1974-????", "1975-????", "1975-????", "1976-1978", "1976-????", "1977-1978", "1978-2008", "1978-????", "1980-1981", "1981-1982", "1981-????", "1981-????", "1982-1987", "1982-????", "1983-1984", "1983-1998", "1983-????", "1983-????", "1984-1987", "1985-2002", "1987-1989", "1988-1991", "1989-????", "1990-1991", "1991-1996", "1991-????", "1992-1993", "1992-1994", "1993-1994", "1993-1995", "1994-1996", "1994-????", "1994-????", "1995-1996", "1995-2001", "1996-1996", "1996-2000", "1996-2007", "1997-2002", "1998-1998", "1998-1999", "1998-2000", "1999-2000", "2000-2001", "2000-2006", "2001-2003", "2002-2003", "2003-2004", "2003-2005", "2003-2010", "2005-2006", "2007-2007", "2007-2009", "2008-2009", "2009-2010", "2010-2011", "2011-2012", "2011-2012", "????"}', 'pg_catalog.varchar'::regtype, -1)::anyarray, NULL, NULL);
 DELETE FROM pg_statistic WHERE starelid = 'public.title'::regclass AND staattnum = (SELECT a.attnum FROM pg_attribute a WHERE a.attrelid = 'public.title'::regclass and a.attname = 'md5sum');
 INSERT INTO pg_statistic VALUES ('public.title'::regclass, (SELECT a.attnum FROM pg_attribute a WHERE a.attrelid = 'public.title'::regclass and a.attname = 'md5sum'), False::boolean, 0::real, 33::integer, -1::real, 2::smallint, 3::smallint, 0::smallint, 0::smallint, 0::smallint, 664::oid, 664::oid, 0::oid, 0::oid, 0::oid, 100::oid, 100::oid, 0::oid, 0::oid, 0::oid, NULL::real[], '{0.0016595647}'::real[], NULL::real[], NULL::real[], NULL::real[], array_in('{"0004ff52ba21a4e08af70b53599c50b5", "02a31613abbf7418bf3654c3e7cf66c6", "051355a105abca942854d90c317af89f", "076cde85a762b4b861c5e50074633849", "0a046fe4cabcd0000399aeae2fa4946e", "0c87a4e025497f87f55aed3203b67fe5", "0f0d94122d70c4b9452dbc560879dca4", "1183e172872bb2ac115e1183995642a1", "14209c9d009cf1a7e5b4673dfac85441", "16a1688b6230e78ba877d388bcb19595", "1931af5030119ec924b91f0d938a6234", "1b9f0b66e980cfee03c8b18764694e52", "1e0e7e51a868f8210940942ae564befd", "2082c8fbc8f71e73c1254aaf6c070c92", "230bd995fe9f23021a840fb8d61f06ab", "25a99bb1800a8fd167811d34ff3c7e32", "2833dc22fed6876bc728b5b138c5979f", "2aac9f88c48be667a03092bc7da95337", "2d7d19e22b91e78575d4a07046cfec59", "301688aa4516f1cc71833575b3d7f963", "32bf2477f9f11f4406dd27f7bc83a66f", "356005d0d24dc5a68ce0b770cc0244c0", "37d8c67c7e4dab009cfbac795a5faea5", "3a850ed0d1b26f7695e484c96bceb6c9", "3d308c2ad4b67843f1168d4e538d63da", "3fb4a463585205c630ab37251a3043da", "428f6844a9acbf8d0211fcbcab2eeb0a", "45179850c0f2354d5ad56340431c374a", "47780388c0f93a2477fdcc5875d18f07", "49de8e4bad3aeef01ed94540274539f3", "4c5fe64af37619111e6bdaaa6e493413", "4ed79b8fb187cb1b3a7283513c91d49f", "518055d66a60d8ed319696df5a077e18", "5414e69a42fd35f6bfd06bac89d9e922", "56cfb7f1bc7254073c86b6430bb31968", "593b1edcff4e4709c30b675596a9446a", "5bc5e2d71e01c3c9d126fd1fffb30d84", "5e53693affcfee77b5ac7a088f7fe3c8", "60e9bd4394788e1ed4a6bebe8d1d9e5d", "639748e8904ec6d058e5f556856e5e3a", "664920fe89d00d00a10af39701a1258b", "6886fed4154140cabd0f32fdc8992b0d", "6b5eeff81bb286ab3f252e2e3f68d3c4", "6dd9784c45bf57b4a946fc294497b84b", "705e1ea8242a8624322521f16b9d1c97", "73180930e95c5b41e769390286026d91", "75d3df2b1d3caba31e9fc6393a93d30d", "786d2b8ffce2fa81a5fc24817480eff1", "7ada28eab2f628c25d852aeb7fdcc577", "7d615d22759de81dea8dda4a71b991aa", "7fd24251eb63641881b0fd8f54ba47ea", "828af12d54a7302cd5ed9accb14c5d4d", "85199b5143e1722793caf68d48002eb6", "8763122e0cdaf04df721d249ff8130d0", "8a063c4ee144776ac07f00b4d8919484", "8c86be5c13f47404a15e5d7c4347e33a", "8f5960a65f4de1e75276a420f14a6ebb", "91d37deee0c6ae49928b957f981641f5", "943eb199966f840cc6fc896033444783", "969868422f0d32c797db2fd83ebbda24", "9929bc9f4be344c67a4465fd9140f192", "9b75b8224c13c24f91937fcc8754065b", "9e2a2d3878e66aa3bade992a50611d3a", "a0dbf689e037904ea852657a3c3ed724", "a3328820692936a4afbfdc45af5ec24b", "a5c7d36f0609297505de1552a20c70ce", "a868dab1e78cd4e0663f340b1e2f57cd", "aaccb2bafd6245a696b3aab73973cb6e", "ad993e9807a73eb019f362d35727877b", "b02e09a52fdee6e53b7271594329d7b7", "b2d562303255ad20be8e9499f67148f2", "b551797f7786edc5f7244a57c0eb3b23", "b7f58de1f7d24a9110809b74dca9e654", "ba3fd2a4f013ef06c3fc199671059819", "bce1507509ae46a6df9e6249fbdc09e8", "bf6e894ec21d28ac5f8d0b7039d1e2f5", "c1e745c0b07c9b6938b2e66dcdb4b9ba", "c4ad80c8bb354223ae61c55c79cac9e7", "c78537cd8a1436f8ddbe18ca67f3e18f", "c9de34135a5e8419b1378bd97a829ab3", "cc23ae52ff468e1412a64f17a95b144e", "cec8935b2be8ea7598bc7ebfd1084add", "d16d423bd39122682491e23d7761da9b", "d424d34bde4076e6f8d197ef3533bdde", "d6b636e7d975a67772db2622c0c204f2", "d95bdfab44ebce0424af9e2da14f9c9b", "dbfec71153c5cef51f499c255d2d25f0", "de79c7a983b5f46a81ae4bd2016e84ea", "e105e014d2b1ad67a632dcf63de5b550", "e3b63f9b7f7170bef7f78379bc60d8b5", "e66332019abb637f0b0d008ecd182417", "e8ecd8c30e3a13dc001bcbc9820afa86", "eba604235032e849b743c580207ea2fd", "ee7485af34fe573e8d28330b903162cb", "f0fc69f918f357b0712836c4ccfd3f6d", "f366f75f75e2aa7e2e52d167842f4192", "f5dd0c9d0a8081e4263617252dd3e30d", "f81d618dc43edeb40c1df0d8137ef50a", "fabd1df184c7edaa9628c8438effd8d2", "fd5ed89d0c00f4ff74101fb20d23e9f8", "fffee3f6a29d0dc3a00e3b62f0af2cf6"}', 'pg_catalog.varchar'::regtype, -1)::anyarray, NULL, NULL, NULL);
+
+update pg_yb_catalog_version set current_version=current_version+1 where db_oid=1;
+SET yb_non_ddl_txn_for_sys_tables_allowed = OFF;

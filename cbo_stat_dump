@@ -339,7 +339,7 @@ def export_statistics(cursor, schemas, relation_names, out_dir):
         relation_names_filter = f" and c.oid in ({relation_names_str}) "
     query = f"""
         SELECT row_to_json(t) FROM
-            (SELECT c.relname, c.relpages, c.reltuples, n.nspname
+            (SELECT c.relname, c.relpages, c.reltuples, c.relallvisible, n.nspname
                 FROM pg_class c JOIN pg_namespace n on c.relnamespace = n.oid {schemas_filter} {relation_names_filter}) t
         """
 
@@ -374,6 +374,11 @@ def export_statistics(cursor, schemas, relation_names, out_dir):
                 s.stanumbers3,
                 s.stanumbers4,
                 s.stanumbers5,
+                s.stacoll1,
+                s.stacoll2,
+                s.stacoll3,
+                s.stacoll4,
+                s.stacoll5,
                 s.stavalues1,
                 s.stavalues2,
                 s.stavalues3,

@@ -19,6 +19,10 @@ import sys
 import difflib
 from enum import Enum
 from time import sleep
+import logging
+import re
+
+logger = logging.getLogger(__name__)
 
 class Host(Enum):
     TARGET = 1
@@ -39,6 +43,7 @@ IMPORT_SCRIPT = 'cbo_stat_load'
 def parse_arguments():
     parser = argparse.ArgumentParser('test_with_benchmark',
             description='Test the framework to reproduce query plans on benchmarks')
+    parser.add_argument('-d', '--debug', action='store_true', help='Set log level to DEBUG')
     parser.add_argument('-b', '--benchmark', required=True, help='Name of the benchmark')
     parser.add_argument('--skip_create_db', action='store_true')
     parser.add_argument('--target_host', help='Hostname or IP address, default localhost', default='localhost')
@@ -57,6 +62,10 @@ def parse_arguments():
     parser.add_argument('--outdir', help='Test output directory')
 
     args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO)
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
 
     if args.yb_mode:
         if args.target_user is None:
@@ -82,8 +91,8 @@ def parse_arguments():
         args.target_database = args.benchmark + '_db'
 
     if args.colocation and not args.yb_mode:
-        sys.stderr.writelines(f'--colocation can only be used with --yb_mode\n')
-        sys.stderr.writelines(f'Colocation is a YugabyteDB feature and not supported on Postgres\n')
+        logger.error(f'--colocation can only be used with --yb_mode')
+        logger.error(f'Colocation is a YugabyteDB feature and not supported on Postgres')
         sys.exit(1)
 
     if args.outdir is None:
@@ -105,7 +114,7 @@ def connect_test_database(args, test_db_name):
 
 def export_query_plan(args, test_db_name, query_file, outdir):
     query_plan_file_name = outdir + '/sim_query_plan.txt'
-    print("Exporting query plan to %s" % query_plan_file_name)
+    logger.debug("Exporting query plan to %s" % query_plan_file_name)
     with open(query_file, 'r') as sql_f:
         sql_text = sql_f.read()
 
@@ -132,56 +141,10 @@ def get_test_connection_str(args):
     connection_str = ['-h', args.test_host, '-p', str(args.test_port), '-U', args.test_user]
     return connection_str
 
-'''
-Create a new database for testing query on the test instance
-'''
-def create_test_database(args, test_db_name):
-    connection_str = get_test_connection_str(args)
-
-    assert_binary_in_path('createdb')
-
-    cmd = ['createdb']
-    cmd.extend(connection_str)
-    cmd.append(test_db_name)
-    if args.colocation:
-        cmd.append('--colocation')
-
-    my_env = os.environ.copy()
-    if args.test_password is not None:
-        my_env["PGPASSWORD"] = args.test_password
-    result = subprocess.run(cmd, env=my_env)
-    if result.stderr is not None:
-        sys.stderr.writelines('Error in createdb: ' + result.stderr)
-        sys.exit(1)
-    else:
-        print ('Created database ' + test_db_name)
-
 def assert_binary_in_path(binary_name):
     if not shutil.which(binary_name):
-        sys.stderr.writelines(binary_name + ' binary not found.\n\n')
+        logger.error(binary_name + ' binary not found.')
         sys.exit(1)
-
-'''
-Drop the database on test instance
-'''
-def drop_test_database(args, test_db_name):
-    connection_str = get_test_connection_str(args)
-
-    assert_binary_in_path('dropdb')
-
-    cmd = ['dropdb']
-    cmd.extend(connection_str)
-    cmd.append(test_db_name)
-
-    my_env = os.environ.copy()
-    if args.test_password is not None:
-        my_env["PGPASSWORD"] = args.test_password
-    result = subprocess.run(cmd, env=my_env)
-    if result.stderr is not None:
-        sys.stderr.writelines('Error in dropdb: ' + result.stderr)
-        sys.exit(1)
-    else:
-        print ('Dropped database ' + test_db_name)
 
 def run_cbo_stat_dump(args, query_outdir, query_file_name_abs):
     cmd = ['python3.13', PROJECT_DIR + '/' + EXPORT_SCRIPT,
@@ -202,15 +165,14 @@ def run_cbo_stat_dump(args, query_outdir, query_file_name_abs):
     subprocess.run(cmd)
 
 def run_ddl_on_test_database(args, test_db_name, ddl_file):
-    SH_BIN = PSQL_BIN
-    if args.yb_mode:
-        SH_BIN = YSQLSH_BIN
+    SH_BIN = get_sh_bin(args)
     assert_binary_in_path(SH_BIN)
 
     connection_str = get_test_connection_str(args)
 
     cmd = [SH_BIN]
     cmd.extend(connection_str)
+    cmd.extend(['-q'])
     cmd.extend(['-d', test_db_name])
     cmd.extend(['-f', ddl_file])
 
@@ -220,7 +182,7 @@ def run_ddl_on_test_database(args, test_db_name, ddl_file):
     subprocess.run(cmd, env=my_env)
 
 def run_cbo_stat_load(args, test_db_name, statistics_file_name):
-    sys.stdout.write(f'Running {IMPORT_SCRIPT}\n')
+    logger.debug(f'Running {IMPORT_SCRIPT}')
     cmd = ['python3.13', PROJECT_DIR + '/' + IMPORT_SCRIPT,
             "-h", args.test_host,
             "-p", str(args.test_port),
@@ -234,7 +196,7 @@ def run_cbo_stat_load(args, test_db_name, statistics_file_name):
 
     subprocess.run(cmd)
 
-def diff_query_plans(outdir):
+def query_plans_match(outdir):
     with open(outdir + '/query_plan.txt') as target_query_plan:
         target_query_plan_text = target_query_plan.readlines()
 
@@ -243,10 +205,12 @@ def diff_query_plans(outdir):
 
     query_plan_diff = list(difflib.unified_diff(target_query_plan_text, sim_query_plan_text, fromfile=outdir + '/query_plan.txt', tofile=outdir + '/sim_query_plan.txt'))
     if query_plan_diff:
-        print('Test fail')
+        logger.error('Test fail')
         with open(outdir + '/query_plan_diff.txt', 'w') as query_plan_diff_file:
             for line in query_plan_diff:
                 query_plan_diff_file.write(line)
+        return False
+    return True
 
 def get_connection_str(host: Host, args):
     if host == Host.TARGET:
@@ -263,18 +227,20 @@ def drop_database(host: Host, args, test_db_name):
     assert_binary_in_path('dropdb')
 
     cmd = ['dropdb']
+    cmd.extend(['--if-exists'])
     cmd.extend(connection_str)
     cmd.append(test_db_name)
 
     my_env = os.environ.copy()
     if args.test_password is not None:
         my_env["PGPASSWORD"] = args.test_password
-    result = subprocess.run(cmd, env=my_env)
-    if result.stderr is not None:
-        sys.stderr.writelines('Error in dropdb: ' + result.stderr)
+    try:
+        result = subprocess.run(cmd, env=my_env, capture_output=True, check=True)
+    except subprocess.CalledProcessError as e:
+        logger.error('Error in dropdb: ' + str(e))
         sys.exit(1)
     else:
-        print ('Dropped database ' + test_db_name)
+        logger.debug ('Dropped database ' + test_db_name)
 
 def create_database(host: Host, args, benchmark_name):
     target_connection_str = get_connection_str(host, args)
@@ -290,12 +256,13 @@ def create_database(host: Host, args, benchmark_name):
     my_env = os.environ.copy()
     if args.test_password is not None:
         my_env["PGPASSWORD"] = args.test_password
-    result = subprocess.run(cmd, env=my_env)
-    if result.stderr is not None:
-        sys.stderr.writelines('Error in createdb: ' + result.stderr)
+    try:
+        subprocess.run(cmd, env=my_env)
+    except subprocess.CalledProcessError as e:
+        logger.error('Error in createdb: ' + str(e))
         sys.exit(1)
     else:
-        print ('Created database ' + benchmark_name)
+        logger.debug ('Created database ' + benchmark_name)
 
 def get_sh_bin(args):
     SH_BIN = PSQL_BIN
@@ -312,18 +279,20 @@ def execute_create_sql(host, args, benchmark_name, benchmark_create_path):
 
     cmd = [SH_BIN]
     cmd.extend(target_connection_str)
+    cmd.extend(['-q'])
     cmd.extend(['-d', benchmark_name])
     cmd.extend(['-f', benchmark_create_path])
 
     my_env = os.environ.copy()
     if args.test_password is not None:
         my_env["PGPASSWORD"] = args.test_password
-    result = subprocess.run(cmd, env=my_env)
-    if result.stderr is not None:
-        sys.stderr.writelines('Error in creating target database: ' + result.stderr)
+    try:
+        subprocess.run(cmd, env=my_env)
+    except subprocess.CalledProcessError as e:
+        logger.error('Error in creating target database: ' + str(e))
         sys.exit(1)
     else:
-        print ('Executed ' + benchmark_create_path)
+        logger.debug ('Executed ' + benchmark_create_path)
 
 def main():
     args = parse_arguments()
@@ -332,36 +301,38 @@ def main():
         sys.stderr.write('Benchmark path not found : ' + benchmark_path)
         sys.exit(1)
 
-    if not args.yb_mode:
+    if args.yb_mode:
         benchmark_create_path = benchmark_path + '/create.yb.sql'
     else:
         benchmark_create_path = benchmark_path + '/create.sql'
 
     if os.path.exists(benchmark_create_path):
-        sys.stdout.write(f'Dropping "{args.target_database}" database on the target.\n')
+        logger.info('Creating target databse')
+        logger.debug(f'Dropping "{args.target_database}" database on the target.')
         drop_database(Host.TARGET, args, args.target_database)
-        sys.stdout.write(f'Creating "{args.target_database}" database on the target.\n')
+        logger.debug(f'Creating "{args.target_database}" database on the target.')
         create_database(Host.TARGET, args, args.target_database)
-        sys.stdout.write(f'Executing "{benchmark_create_path}" on the target.\n')
+        logger.debug(f'Executing "{benchmark_create_path}" on the target.')
         execute_create_sql(Host.TARGET, args, args.target_database, benchmark_create_path)
 
     benchmark_queries_path = PROJECT_DIR + '/test/' + args.benchmark + '/queries'
     if not os.path.isdir(benchmark_queries_path):
-        sys.stderr.write('Test queries path not found : ' + benchmark_queries_path + '\n')
+        logger.fatal('Test queries path not found : ' + benchmark_queries_path)
         sys.exit(1)
 
-    sys.stdout.write('Testing queries in ' + benchmark_queries_path + '\n')
+    logger.info('Testing queries in ' + benchmark_queries_path)
     list_query_files = os.listdir(benchmark_queries_path)
     list_query_files.sort()
+    failed_queries = []
     for query_file_name in list_query_files:
         query_name = Path(query_file_name).stem
         query_file_name_abs = os.path.join(benchmark_queries_path, query_file_name)
         if os.path.isfile(query_file_name_abs):
             query_outdir = args.outdir + '/' + query_name
             if args.ignore_ran_tests and os.path.exists(query_outdir):
-                print ('Ignoring previously ran test ' + args.benchmark + ' : ' + query_name)
+                logger.debug ('Ignoring previously ran test ' + args.benchmark + ' : ' + query_name)
                 continue
-            print ('Testing ' + query_name)
+            logger.info ('Testing ' + query_name)
             run_cbo_stat_dump(args, query_outdir, query_file_name_abs)
             test_db_name = args.benchmark + '_' + query_name + '_test_db'
             drop_database(Host.TEST, args, test_db_name)
@@ -370,8 +341,15 @@ def main():
             run_cbo_stat_load(args, test_db_name, query_outdir + '/statistics.json')
             sleep(0.1)
             export_query_plan(args, test_db_name, query_file_name_abs, query_outdir)
-            diff_query_plans(query_outdir)
-            # drop_test_database(args, test_db_name)
+            if not query_plans_match(query_outdir):
+                failed_queries.append([query_file_name, query_outdir + '/query_plan_diff.txt'])
+            drop_database(Host.TEST, args, test_db_name)
+    if failed_queries:
+        logger.error("Following tests failed!")
+        for query in failed_queries:
+            logger.error(query[0] + ' : ' + query[1])
+    else:
+        logger.info("All tests passed!")
 
 if __name__ == "__main__":
     main()

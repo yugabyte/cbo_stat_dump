@@ -12,9 +12,12 @@ import sys
 import os, platform
 import json
 import packaging.version as version
+import logging
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(SCRIPT_DIR))
 from cbo_stat_dump import __version__
+
+logger = logging.getLogger(__name__)
 
 def get_connection_dict(args):
     envOpts = os.environ
@@ -23,7 +26,7 @@ def get_connection_dict(args):
     username = args.username
     password = args.password
     db = args.database;
-    print (f"Connecting to database host={host}, port={port}, username={username}, db={db}")
+    logger.debug (f"Connecting to database host={host}, port={port}, username={username}, db={db}")
 
     connectionDict = {
         'host': host,
@@ -46,6 +49,7 @@ def parse_cmd_line():
         add_help=False
     )
     parser.add_argument('--help', action='store_true', help='show this help message and exit')
+    parser.add_argument('--debug', action='store_true', help='Set log level to DEBUG')
     parser.add_argument('-h', '--host', help='Hostname or IP address, default localhost', default="localhost")
     parser.add_argument('-p', '--port', help='Port number, default 5432')
     parser.add_argument('-d', '--database', help='Database name')
@@ -57,6 +61,10 @@ def parse_cmd_line():
     parser.add_argument('--yb_mode',action='store_true', help='Use this option to import statistics in YugabyteDB')
 
     args = parser.parse_args()
+    
+    logging.basicConfig(level=logging.INFO)
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
     
     if args.help:
         parser.print_help()
@@ -82,7 +90,7 @@ def parse_cmd_line():
             args.output_file = f"import_statistics.sql"
     else:
         if args.database is None:
-            sys.stderr.writelines('\nMust specify target database with [--database|-D] option\n\n')
+            logger.fatal('\nMust specify target database with [--database|-D] option\n\n')
             sys.exit(1)
 
     return args
@@ -198,13 +206,13 @@ def check_version_compatibility(version_string):
         current_version.major == stat_version.major):
         return
     else:
-        sys.stderr.writelines(f'\nVersion mismatch: statistics version ({version_string}) does not match with version of cbo_stat_load ({__version__})\n\n')
+        logger.fatal(f'\nVersion mismatch: statistics version ({version_string}) does not match with version of cbo_stat_load ({__version__})\n\n')
         sys.exit(1)
 
 def import_statistics(args, cursor):
     if not os.path.exists(args.stat_file):
-        print (f"Statistics file {args.stat_file} does not exist")
-    print (f"Importing statistics from file {args.stat_file}")
+        logger.debug (f"Statistics file {args.stat_file} does not exist")
+    logger.debug (f"Importing statistics from file {args.stat_file}")
 
     statistics_json = json.load(open(args.stat_file, 'r'))
     if ('version' in statistics_json):
@@ -214,11 +222,11 @@ def import_statistics(args, cursor):
         enable_write_on_sys_tables(args, cursor)
 
     for pg_class_row_json in statistics_json['pg_class']:
-        print (pg_class_row_json["nspname"] + "." + pg_class_row_json["relname"] + " = " + str(pg_class_row_json["reltuples"]))
+        logger.debug (pg_class_row_json["nspname"] + "." + pg_class_row_json["relname"] + " = " + str(pg_class_row_json["reltuples"]))
         update_reltuples(args, cursor, pg_class_row_json["nspname"], pg_class_row_json["relname"], pg_class_row_json["reltuples"], pg_class_row_json["relpages"], pg_class_row_json["relallvisible"])
 
     for pg_statistic_row_json in statistics_json['pg_statistic']:
-        print (pg_statistic_row_json["nspname"] + "." + pg_statistic_row_json["relname"] + "." + pg_statistic_row_json["attname"])
+        logger.debug (pg_statistic_row_json["nspname"] + "." + pg_statistic_row_json["relname"] + "." + pg_statistic_row_json["attname"])
         update_pg_statistic(args, cursor, pg_statistic_row_json)
 
     if args.yb_mode:

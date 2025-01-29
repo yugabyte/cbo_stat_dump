@@ -19,7 +19,9 @@ from _ctypes import PyObj_FromPtr
 from pathlib import Path
 import psycopg2
 import urllib.request, json
+import logging
 
+logger = logging.getLogger(__name__)
 
 PG_DUMP_BIN = 'pg_dump'
 YSQL_DUMP_BIN = 'ysql_dump'
@@ -83,7 +85,7 @@ def get_connection_dict(args):
     username = args.username
     password = args.password
     db = args.database
-    print(f"Connecting to database host={host}, port={port}, username={username}, db={db}")
+    logger.debug(f"Connecting to database host={host}, port={port}, username={username}, db={db}")
 
     return {
         'host': host,
@@ -108,6 +110,7 @@ def parse_cmd_line():
     )
     
     parser.add_argument('--help', action='store_true', help='show this help message and exit')
+    parser.add_argument('--debug', action='store_true', help='Set log level to DEBUG')
     parser.add_argument('-h', '--host', help='Hostname or IP address, default localhost',
                             default="localhost")
     parser.add_argument('-p', '--port', help='Port number')
@@ -131,6 +134,10 @@ def parse_cmd_line():
     if args.help:
         parser.print_help()
         sys.exit(0)
+    
+    logging.basicConfig(level=logging.INFO)
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
 
     if not args.yb_mode and args.enable_optimizer_statistics:
         sys.stderr.writelines(
@@ -207,7 +214,7 @@ def get_process_output(cmd):
                          env=os.environ)
     outmsg, errormsg = p.communicate()
     if p.returncode != 0:
-        sys.stderr.writelines(
+        logger.fatal(
             f'\nError when executing the following command.\n\n{cmd}\n{errormsg.decode()}\n\n')
         sys.exit(1)
     return outmsg.decode('UTF-8')
@@ -218,11 +225,11 @@ def extract_ddl(connection_dict, schemas, relation_names, output_dir, yb_mode):
     if yb_mode:
         DDL_DUMP_BIN = YSQL_DUMP_BIN
     if not shutil.which(DDL_DUMP_BIN):
-        sys.stderr.writelines(f"{DDL_DUMP_BIN} binary not found.\n\n")
+        logger.fatal(f"{DDL_DUMP_BIN} binary not found.\n\n")
         sys.exit(1)
 
     ddl_file_name = f'{output_dir}/{DDL_FILE_NAME}'
-    print(f"Exporting DDL to {ddl_file_name}")
+    logger.debug(f"Exporting DDL to {ddl_file_name}")
     ddl_tmp_file_name = ddl_file_name + '.tmp'
     connection_params = f'-d {connection_dict["database"]} -h {connection_dict["host"]} -p {connection_dict["port"]} -U {connection_dict["user"]}'
 
@@ -258,13 +265,13 @@ def extract_ddl(connection_dict, schemas, relation_names, output_dir, yb_mode):
 
 def export_query_file(query_file, out_dir):
     query_file_name = f'{out_dir}/{QUERY_FILE_NAME}'
-    print(f"Exporting query file to {query_file_name}")
+    logger.debug(f"Exporting query file to {query_file_name}")
     shutil.copy(query_file, query_file_name)
 
 
 def export_query_plan(cursor, query_file, out_dir, enable_optimizer_statistics):
     query_plan_file_name = f'{out_dir}/{QUERY_PLAN_FILE_NAME}'
-    print(f"Exporting query plan to {query_plan_file_name}")
+    logger.debug(f"Exporting query plan to {query_plan_file_name}")
     with open(query_file, 'r') as sql_f:
         sql_text = sql_f.read()
 
@@ -321,7 +328,7 @@ class CustomIndentEncoder(json.JSONEncoder):
 
 def export_statistics(cursor, schemas, relation_names, out_dir):
     statistics_file_name = f'{out_dir}/{STATISTICS_FILE_NAME}'
-    print(f"Exporting data from pg_statistic and pg_class to file {statistics_file_name}")
+    logger.debug(f"Exporting data from pg_statistic and pg_class to file {statistics_file_name}")
     statistics_dict = {}
 
     statistics_dict['version'] = __version__
@@ -336,7 +343,8 @@ def export_statistics(cursor, schemas, relation_names, out_dir):
     relation_names_filter = ""
     if relation_names:
         relation_names_str = ', '.join([f"\'{relation_name}\'::regclass::oid" for relation_name in relation_names])
-        relation_names_filter = f" and c.oid in ({relation_names_str}) "
+        # relation_names_filter = f" and c.oid in ({relation_names_str}) "
+        relation_names_filter = f" and (c.oid in ({relation_names_str}) or c.oid in (select indexrelid from pg_index where indrelid in ({relation_names_str}))) "
     query = f"""
         SELECT row_to_json(t) FROM
             (SELECT c.relname, c.relpages, c.reltuples, c.relallvisible, n.nspname
@@ -407,7 +415,7 @@ def export_statistics(cursor, schemas, relation_names, out_dir):
 
 def export_overridden_gucs(cursor, out_dir):
     overridden_gucs_file_name = f'{out_dir}/{OVERRIDDEN_GUCS_FILE_NAME}'
-    print(f"Exporting overridden GUCs to {overridden_gucs_file_name}")
+    logger.debug(f"Exporting overridden GUCs to {overridden_gucs_file_name}")
     overridden_gucs_list = [];
     cursor.execute('SELECT name, setting from pg_settings where setting <> boot_val')
     while True:
@@ -425,7 +433,7 @@ def export_overridden_gucs(cursor, out_dir):
 
 def export_gflags(host, out_dir):
     gflags_file_name = f'{out_dir}/{GFLAGS_FILE_NAME}'
-    print(f"Exporting gflags to {gflags_file_name}")
+    logger.debug(f"Exporting gflags to {gflags_file_name}")
     gflags_dict = {}
     try :
         with urllib.request.urlopen(f'http://{host}:7000/api/v1/varz') as url:
@@ -438,13 +446,13 @@ def export_gflags(host, out_dir):
         with open(gflags_file_name, 'w') as gflags_file:
             gflags_file.write(gflags_json)
     except Exception as e:
-        print ("Failed to get gflags.")
+        logger.debug ("Failed to get gflags.")
         return
 
 
 def export_version(cursor, out_dir):
     version_file_name = f'{out_dir}/{VERSION_FILE_NAME}'
-    print(f"Exporting version to {version_file_name}")
+    logger.debug(f"Exporting version to {version_file_name}")
     cursor.execute("select version()")
     with open(version_file_name, 'w') as version_file:
         version_file.write(cursor.fetchone()[0])

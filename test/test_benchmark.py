@@ -38,7 +38,6 @@ YSQLSH_BIN = 'ysqlsh'
 PROJECT_DIR = str(get_project_root())
 TEST_OUTDIR = PROJECT_DIR + '/test_out_dir'
 EXPORT_SCRIPT = 'cbo_stat_dump'
-IMPORT_SCRIPT = 'cbo_stat_load'
 
 def parse_arguments():
     parser = argparse.ArgumentParser('test_with_benchmark',
@@ -168,7 +167,7 @@ def run_cbo_stat_dump(args, query_outdir, query_file_name_abs):
 
     subprocess.run(cmd)
 
-def run_ddl_on_test_database(args, test_db_name, ddl_file):
+def run_sql_on_test_database(args, test_db_name, sql_file):
     SH_BIN = get_sh_bin(args)
     assert_binary_in_path(SH_BIN)
 
@@ -178,27 +177,12 @@ def run_ddl_on_test_database(args, test_db_name, ddl_file):
     cmd.extend(connection_str)
     cmd.extend(['-q'])
     cmd.extend(['-d', test_db_name])
-    cmd.extend(['-f', ddl_file])
+    cmd.extend(['-f', sql_file])
 
     my_env = os.environ.copy()
     if args.test_password is not None:
         my_env["PGPASSWORD"] = args.test_password
     subprocess.run(cmd, env=my_env)
-
-def run_cbo_stat_load(args, test_db_name, statistics_file_name):
-    logger.debug(f'Running {IMPORT_SCRIPT}')
-    cmd = ['python3.13', PROJECT_DIR + '/' + IMPORT_SCRIPT,
-            "-h", args.test_host,
-            "-p", str(args.test_port),
-            "-d", test_db_name,
-            "-u", args.test_user,
-            "-s", statistics_file_name]
-    if args.test_password is not None:
-        cmd.extend(['-W', args.test_password])
-    if args.yb_mode:
-        cmd.append('--yb_mode')
-
-    subprocess.run(cmd)
 
 def query_plans_match(outdir):
     with open(outdir + '/query_plan.txt') as prod_query_plan:
@@ -310,7 +294,7 @@ def main():
         benchmark_create_path = args.benchmark_path + '/create.sql'
 
     if args.create_prod_db:
-        if not os.path.ts(benchmark_create_path):
+        if not os.path.exists(benchmark_create_path):
             logger.fatal(f'{benchmark_create_path} is needed to create production database.')
             exit(1)
 
@@ -322,7 +306,7 @@ def main():
         logger.debug(f'Executing "{benchmark_create_path}" on the prod.')
         execute_create_sql(Host.TARGET, args, args.prod_database, benchmark_create_path)
 
-    benchmark_queries_path = PROJECT_DIR + '/test/' + args.benchmark + '/queries'
+    benchmark_queries_path = args.benchmark_path + '/queries'
     if not os.path.isdir(benchmark_queries_path):
         logger.fatal('Test queries path not found : ' + benchmark_queries_path)
         sys.exit(1)
@@ -344,8 +328,8 @@ def main():
             test_db_name = args.benchmark + '_' + query_name + '_test_db'
             drop_database(Host.TEST, args, test_db_name)
             create_database(Host.TEST, args, test_db_name)
-            run_ddl_on_test_database(args, test_db_name, query_outdir + '/ddl.sql')
-            run_cbo_stat_load(args, test_db_name, query_outdir + '/statistics.json')
+            run_sql_on_test_database(args, test_db_name, query_outdir + '/ddl.sql')
+            run_sql_on_test_database(args, test_db_name, query_outdir + '/import_statistics.sql')
             sleep(0.1)
             export_query_plan(args, test_db_name, query_file_name_abs, query_outdir)
             if not query_plans_match(query_outdir):

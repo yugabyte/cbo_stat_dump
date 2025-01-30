@@ -582,7 +582,6 @@ def main():
     export_version(cursor, out_dir_abs_path)
     export_overridden_gucs(cursor, out_dir_abs_path)
     if args.yb_mode:
-
         export_gflags(args.host, out_dir_abs_path)
     cursor.close()
     conn.close()

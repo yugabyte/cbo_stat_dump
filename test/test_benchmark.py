@@ -2,9 +2,9 @@
 
 '''
 Objective :
- * Connect to a target database with benchmark dataset. See below for steps to create such database.
+ * Connect to a prod database with benchmark dataset. See below for steps to create such database.
  * For each query in <becnhmark>_queries folder
-    * export DDL, query plan and statistics from the target database.
+    * export DDL, query plan and statistics from the prod database.
     * Create a test database and run the DDL file, import the statistics and get the query plan.
     * Compare the query plan and create a diff if plans don't match.
 '''
@@ -45,19 +45,20 @@ def parse_arguments():
             description='Test the framework to reproduce query plans on benchmarks')
     parser.add_argument('-d', '--debug', action='store_true', help='Set log level to DEBUG')
     parser.add_argument('-b', '--benchmark', required=True, help='Name of the benchmark')
-    parser.add_argument('--skip_create_db', action='store_true')
-    parser.add_argument('--target_host', help='Hostname or IP address, default localhost', default='localhost')
-    parser.add_argument('--target_port', help='Port number, default 5432')
-    parser.add_argument('--target_user', help='YugabyteDB username, default yugabyte')
-    parser.add_argument('--target_password', help='Password, default no password')
-    parser.add_argument('--target_database', help='Target Database name, default benchmark name with "_db" suffix')
-    parser.add_argument('--yb_mode', action='store_true', help='Use this option if target database is YugabyteDB')
+    parser.add_argument('--yb_mode', action='store_true', help='Use this option if prod database is YugabyteDB')
+    parser.add_argument('--benchmark_path', help='Path to benchmark files')
+    parser.add_argument('--create_prod_db', action='store_true', help='')
+    parser.add_argument('--prod_host', help='Hostname or IP address of production server, default localhost', default='localhost')
+    parser.add_argument('--prod_port', help='Port number of production server, default 5432')
+    parser.add_argument('--prod_user', help='Username of production server')
+    parser.add_argument('--prod_password', help='Password of production server, default no password')
+    parser.add_argument('--prod_database', help='Database name in production server, default benchmark name with "_db" suffix')
     parser.add_argument('--test_host', help='Hostname or IP address, default same as TARGET_HOST')
     parser.add_argument('--test_port', help='Port number, , default same as TARGET_PORT')
     parser.add_argument('--test_user', help='YugabyteDB username, default same as TARGET_USER')
     parser.add_argument('--test_password', help='Password, default same as TARGET_PASSWORD')
     parser.add_argument('--ignore_ran_tests', action='store_true', help='Ignore tests for which an outdir exists')
-    parser.add_argument('--enable_optimizer_statistics', action='store_true', help='Set yb_enable_optimizer_statistics=ON before running explain on query')
+    parser.add_argument('--enable_base_scans_cost_model', action='store_true', help='Set yb_enable_base_scans_cost_model=ON before running explain on query')
     parser.add_argument('--colocation', action='store_true', help='Creates test database with colocation ie. all tables are colocated on a single tablet')
     parser.add_argument('--outdir', help='Test output directory')
 
@@ -66,29 +67,32 @@ def parse_arguments():
     logging.basicConfig(level=logging.INFO)
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
+        
+    if not args.benchmark_path:
+        args.benchmark_path = PROJECT_DIR + '/test/' + args.benchmark
 
     if args.yb_mode:
-        if args.target_user is None:
-            args.target_user = 'yugabyte'
-        if args.target_port is None:
-            args.target_port = 5433
+        if args.prod_user is None:
+            args.prod_user = 'yugabyte'
+        if args.prod_port is None:
+            args.prod_port = 5433
     else:
-        if args.target_user is None:
-            args.target_user = 'gaurav'
-        if args.target_port is None:
-            args.target_port = 5432
+        if args.prod_user is None:
+            args.prod_user = 'gaurav'
+        if args.prod_port is None:
+            args.prod_port = 5432
 
     if args.test_host is None:
-        args.test_host = args.target_host
+        args.test_host = args.prod_host
     if args.test_port is None:
-        args.test_port = args.target_port
+        args.test_port = args.prod_port
     if args.test_user is None:
-        args.test_user = args.target_user
+        args.test_user = args.prod_user
     if args.test_password is None:
-        args.test_password = args.target_password
+        args.test_password = args.prod_password
 
-    if args.target_database is None:
-        args.target_database = args.benchmark + '_db'
+    if args.prod_database is None:
+        args.prod_database = args.benchmark + '_db'
 
     if args.colocation and not args.yb_mode:
         logger.error(f'--colocation can only be used with --yb_mode')
@@ -120,8 +124,8 @@ def export_query_plan(args, test_db_name, query_file, outdir):
 
     explain_query = "EXPLAIN %s" % sql_text
     test_conn, test_cursor = connect_test_database(args, test_db_name)
-    if args.enable_optimizer_statistics and args.yb_mode:
-        test_cursor.execute('SET yb_enable_optimizer_statistics=ON')
+    if args.enable_base_scans_cost_model and args.yb_mode:
+        test_cursor.execute('SET yb_enable_base_scans_cost_model=ON')
     if not args.yb_mode:
         test_cursor.execute('SET enable_cbo_statistics_simulation=ON')
     test_cursor.execute(explain_query)
@@ -133,8 +137,8 @@ def export_query_plan(args, test_db_name, query_file, outdir):
     test_cursor.close()
     test_conn.close()
 
-def get_target_connection_str(args):
-    connection_str = ['-h', args.target_host, '-p', str(args.target_port), '-U', args.target_user]
+def get_prod_connection_str(args):
+    connection_str = ['-h', args.prod_host, '-p', str(args.prod_port), '-U', args.prod_user]
     return connection_str
 
 def get_test_connection_str(args):
@@ -148,17 +152,17 @@ def assert_binary_in_path(binary_name):
 
 def run_cbo_stat_dump(args, query_outdir, query_file_name_abs):
     cmd = ['python3.13', PROJECT_DIR + '/' + EXPORT_SCRIPT,
-            '-h', args.target_host,
-            '-p', str(args.target_port),
-            '-d', args.target_database,
-            '-u', args.target_user,
+            '-h', args.prod_host,
+            '-p', str(args.prod_port),
+            '-d', args.prod_database,
+            '-u', args.prod_user,
             '-o', query_outdir,
             '-q', query_file_name_abs]
 
-    if args.target_password is not None:
-        cmd.extend(['-W', args.target_password])
-    if args.enable_optimizer_statistics and args.yb_mode:
-        cmd.append('--enable_optimizer_statistics')
+    if args.prod_password is not None:
+        cmd.extend(['-W', args.prod_password])
+    if args.enable_base_scans_cost_model and args.yb_mode:
+        cmd.append('--enable_base_scans_cost_model')
     if args.yb_mode:
         cmd.append('--yb_mode')
 
@@ -197,13 +201,13 @@ def run_cbo_stat_load(args, test_db_name, statistics_file_name):
     subprocess.run(cmd)
 
 def query_plans_match(outdir):
-    with open(outdir + '/query_plan.txt') as target_query_plan:
-        target_query_plan_text = target_query_plan.readlines()
+    with open(outdir + '/query_plan.txt') as prod_query_plan:
+        prod_query_plan_text = prod_query_plan.readlines()
 
     with open(outdir + '/sim_query_plan.txt') as sim_query_plan:
         sim_query_plan_text = sim_query_plan.readlines()
 
-    query_plan_diff = list(difflib.unified_diff(target_query_plan_text, sim_query_plan_text, fromfile=outdir + '/query_plan.txt', tofile=outdir + '/sim_query_plan.txt'))
+    query_plan_diff = list(difflib.unified_diff(prod_query_plan_text, sim_query_plan_text, fromfile=outdir + '/query_plan.txt', tofile=outdir + '/sim_query_plan.txt'))
     if query_plan_diff:
         logger.error('Test fail')
         with open(outdir + '/query_plan_diff.txt', 'w') as query_plan_diff_file:
@@ -214,7 +218,7 @@ def query_plans_match(outdir):
 
 def get_connection_str(host: Host, args):
     if host == Host.TARGET:
-        return get_target_connection_str(args)
+        return get_prod_connection_str(args)
     elif host == Host.TEST:
         return get_test_connection_str(args)
 
@@ -243,12 +247,12 @@ def drop_database(host: Host, args, test_db_name):
         logger.debug ('Dropped database ' + test_db_name)
 
 def create_database(host: Host, args, benchmark_name):
-    target_connection_str = get_connection_str(host, args)
+    prod_connection_str = get_connection_str(host, args)
 
     assert_binary_in_path('createdb')
 
     cmd = ['createdb']
-    cmd.extend(target_connection_str)
+    cmd.extend(prod_connection_str)
     cmd.append(benchmark_name)
     if args.colocation:
         cmd.append('--colocation')
@@ -272,13 +276,13 @@ def get_sh_bin(args):
 
 def execute_create_sql(host, args, benchmark_name, benchmark_create_path):
     assert(host == Host.TARGET)
-    target_connection_str = get_connection_str(host, args)
+    prod_connection_str = get_connection_str(host, args)
 
     SH_BIN = get_sh_bin(args)
     assert_binary_in_path(SH_BIN)
 
     cmd = [SH_BIN]
-    cmd.extend(target_connection_str)
+    cmd.extend(prod_connection_str)
     cmd.extend(['-q'])
     cmd.extend(['-d', benchmark_name])
     cmd.extend(['-f', benchmark_create_path])
@@ -289,31 +293,34 @@ def execute_create_sql(host, args, benchmark_name, benchmark_create_path):
     try:
         subprocess.run(cmd, env=my_env)
     except subprocess.CalledProcessError as e:
-        logger.error('Error in creating target database: ' + str(e))
+        logger.error('Error in creating prod database: ' + str(e))
         sys.exit(1)
     else:
         logger.debug ('Executed ' + benchmark_create_path)
 
 def main():
     args = parse_arguments()
-    benchmark_path = PROJECT_DIR + '/test/' + args.benchmark
-    if not os.path.isdir(benchmark_path):
-        sys.stderr.write('Benchmark path not found : ' + benchmark_path)
+    if not os.path.isdir(args.benchmark_path):
+        sys.stderr.write('Benchmark path not found : ' + args.benchmark_path)
         sys.exit(1)
 
     if args.yb_mode:
-        benchmark_create_path = benchmark_path + '/create.yb.sql'
+        benchmark_create_path = args.benchmark_path + '/create.yb.sql'
     else:
-        benchmark_create_path = benchmark_path + '/create.sql'
+        benchmark_create_path = args.benchmark_path + '/create.sql'
 
-    if os.path.exists(benchmark_create_path):
-        logger.info('Creating target databse')
-        logger.debug(f'Dropping "{args.target_database}" database on the target.')
-        drop_database(Host.TARGET, args, args.target_database)
-        logger.debug(f'Creating "{args.target_database}" database on the target.')
-        create_database(Host.TARGET, args, args.target_database)
-        logger.debug(f'Executing "{benchmark_create_path}" on the target.')
-        execute_create_sql(Host.TARGET, args, args.target_database, benchmark_create_path)
+    if args.create_prod_db:
+        if not os.path.ts(benchmark_create_path):
+            logger.fatal(f'{benchmark_create_path} is needed to create production database.')
+            exit(1)
+
+        logger.info(f'Creating production database using {benchmark_create_path}')
+        logger.debug(f'Dropping "{args.prod_database}" database on the prod.')
+        drop_database(Host.TARGET, args, args.prod_database)
+        logger.debug(f'Creating "{args.prod_database}" database on the prod.')
+        create_database(Host.TARGET, args, args.prod_database)
+        logger.debug(f'Executing "{benchmark_create_path}" on the prod.')
+        execute_create_sql(Host.TARGET, args, args.prod_database, benchmark_create_path)
 
     benchmark_queries_path = PROJECT_DIR + '/test/' + args.benchmark + '/queries'
     if not os.path.isdir(benchmark_queries_path):

@@ -29,7 +29,8 @@ YSQL_DUMP_BIN = 'ysql_dump'
 QUERY_FILE_NAME = 'query.sql'
 DDL_FILE_NAME = 'ddl.sql'
 QUERY_PLAN_FILE_NAME = 'query_plan.txt'
-STATISTICS_FILE_NAME = 'statistics.json'
+STATISTICS_JSON_FILE_NAME = 'statistics.json'
+IMPORT_STATISTICS_SQL_FILE_NAME = 'import_statistics.sql'
 OVERRIDDEN_GUCS_FILE_NAME = 'overridden_gucs.csv'
 GFLAGS_FILE_NAME = 'gflags.json'
 VERSION_FILE_NAME = 'version.txt'
@@ -70,7 +71,7 @@ YB_CBO_RELEVANT_GUC_PARAMS = {'yb_enable_geolocation_costing',
                               'yb_enable_batchednl',
                               'yb_enable_parallel_append',
                               'yb_enable_bitmapscan',
-                              'yb_enable_optimizer_statistics',
+                              'yb_enable_base_scans_cost_model',
                               'yb_bnl_batch_size',
                               'yb_enable_expression_pushdown',
                               'yb_enable_geolocation_costing',
@@ -108,7 +109,7 @@ def parse_cmd_line():
         description='Exports statistics and other data to reproduce query plan',
         add_help=False
     )
-    
+
     parser.add_argument('--help', action='store_true', help='show this help message and exit')
     parser.add_argument('--debug', action='store_true', help='Set log level to DEBUG')
     parser.add_argument('-h', '--host', help='Hostname or IP address, default localhost',
@@ -126,22 +127,22 @@ def parse_cmd_line():
                         help='File containing query that needs to be debugged')
     parser.add_argument('--yb_mode', action='store_true',
                         help='Use this mode to export data from YugabyteDB')
-    parser.add_argument('--enable_optimizer_statistics', action=argparse.BooleanOptionalAction,
-                        help='Set yb_enable_optimizer_statistics=ON before running explain on query')
+    parser.add_argument('--enable_base_scans_cost_model', action=argparse.BooleanOptionalAction,
+                        help='Set yb_enable_base_scans_cost_model=ON before running explain on query')
 
     args = parser.parse_args()
 
     if args.help:
         parser.print_help()
         sys.exit(0)
-    
+
     logging.basicConfig(level=logging.INFO)
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
 
-    if not args.yb_mode and args.enable_optimizer_statistics:
+    if not args.yb_mode and args.enable_base_scans_cost_model:
         logger.fatal(
-            '\n--enable_optimizer_statistics can only be used with --yb_mode\n\n')
+            '\n--enable_base_scans_cost_model can only be used with --yb_mode\n\n')
         sys.exit(1)
 
     if args.schemas and args.query_file:
@@ -270,14 +271,14 @@ def export_query_file(query_file, out_dir):
     shutil.copy(query_file, query_file_name)
 
 
-def export_query_plan(cursor, query_file, out_dir, enable_optimizer_statistics):
+def export_query_plan(cursor, query_file, out_dir, enable_base_scans_cost_model):
     query_plan_file_name = f'{out_dir}/{QUERY_PLAN_FILE_NAME}'
     logger.debug(f"Exporting query plan to {query_plan_file_name}")
     with open(query_file, 'r') as sql_f:
         sql_text = sql_f.read()
 
-    if enable_optimizer_statistics:
-        cursor.execute('SET yb_enable_optimizer_statistics=ON')
+    if enable_base_scans_cost_model:
+        cursor.execute('SET yb_enable_base_scans_cost_model=ON')
     explain_query = f"EXPLAIN {sql_text}"
     cursor.execute(explain_query)
     query_plan = cursor.fetchall()
@@ -326,21 +327,100 @@ class CustomIndentEncoder(json.JSONEncoder):
 
         return json_repr
 
+def get_pg_statatistic_insert_query(stat_json):
+    columnTypes = { "stainherit": "boolean",
+                    "stanullfrac": "real",
+                    "stawidth": "integer",
+                    "stadistinct": "real",
+                    "stakind1": "smallint",
+                    "stakind2": "smallint",
+                    "stakind3": "smallint",
+                    "stakind4": "smallint",
+                    "stakind5": "smallint",
+                    "staop1": "oid",
+                    "staop2": "oid",
+                    "staop3": "oid",
+                    "staop4": "oid",
+                    "staop5": "oid",
+                    "stacoll1": "oid",
+                    "stacoll2": "oid",
+                    "stacoll3": "oid",
+                    "stacoll4": "oid",
+                    "stacoll5": "oid",
+                    "stanumbers1": "real[]",
+                    "stanumbers2": "real[]",
+                    "stanumbers3": "real[]",
+                    "stanumbers4": "real[]",
+                    "stanumbers5": "real[]"}
 
-def export_statistics(cursor, schemas, relation_names, out_dir):
-    statistics_file_name = f'{out_dir}/{STATISTICS_FILE_NAME}'
-    logger.debug(f"Exporting data from pg_statistic and pg_class to file {statistics_file_name}")
+    if 'typnspname' not in stat_json:
+        stavaluesType = 'pg_catalog'
+    else:
+        stavaluesType = stat_json['typnspname']
+
+    stavaluesType = stavaluesType + '.' + stat_json["typname"]
+    for i in range (1, 5):
+        columnTypes["stavalues" + str(i)] = stavaluesType
+
+    columnValues = ""
+    for columnName, columnType in columnTypes.items():
+        val = stat_json[columnName]
+        sql_val = ""
+        if (columnName.startswith('stavalues')):
+            # Convert a python list into SQL array string representation '{"...", "..."}'
+            sql_array = ""
+            if val is None:
+                sql_val = "NULL"
+            else:
+                if isinstance(val[0], str):
+                    # Escape backslash and double quotes with backslash, but single quote with single quote
+                    val = [f'"%s"' % e.replace('\\', '\\\\').replace('"', '\\"').replace('\'', '\'\'') for e in val]
+                    sql_array = ', '.join(val)
+                elif isinstance(val[0], dict):
+                    # Array of JSON Objects, the type of the column must be jsonb
+                    assert(stavaluesType == 'pg_catalog.jsonb')
+                    val = [f'"%s"' % str(e).replace('"', '\\\\\\\"').replace("'", '\\"').replace('True', 'true').replace('False', 'false') for e in val]
+                    sql_array = ', '.join(val)
+                else:
+                    val = [f"%s" % e for e in val]
+                    sql_array = ', '.join(val)
+                sql_array = f"'{{{sql_array}}}'"
+                sql_val = f"array_in({sql_array}, '{columnType}'::regtype, -1)::anyarray"
+        elif isinstance(val, list):
+            assert(columnType == 'real[]')
+            sql_val = str(val);
+            sql_val = f"'{{{sql_val[1:-1]}}}'::{columnType}"
+        elif val is None:
+            sql_val = 'NULL::' + columnType
+        else:
+            sql_val = str(stat_json[columnName]) + "::" + columnType
+        columnValues += ", " + sql_val
+
+    starelid = f"'{stat_json['nspname']}.{stat_json['relname']}'::regclass"
+    staattnum_subquery = f"(SELECT a.attnum FROM pg_attribute a WHERE a.attrelid = {starelid} and a.attname = '{stat_json['attname']}')"
+    query = f"""
+DELETE FROM pg_statistic WHERE starelid = {starelid} AND staattnum = {staattnum_subquery};
+INSERT INTO pg_statistic VALUES ({starelid}, {staattnum_subquery}{columnValues}); \
+"""
+    return query
+
+
+def export_statistics(args, cursor, schemas, relation_names, out_dir):
+    statistics_json_file_name = f'{out_dir}/{STATISTICS_JSON_FILE_NAME}'
+    import_statistics_sql_file_name = f'{out_dir}/{IMPORT_STATISTICS_SQL_FILE_NAME}'
+
+    logger.debug(f"Exporting data from pg_statistic and pg_class to file {statistics_json_file_name}")
     statistics_dict = {}
 
     statistics_dict['version'] = __version__
-    
+
     schemas_filter = ""
     if schemas:
         schemas_str = ', '.join([f"\'{schema.strip()}\'" for schema in schemas])
         schemas_filter = f" and n.nspname in ({schemas_str}) "
     else:
         schemas_filter = " and n.nspname not in ('pg_catalog', 'pg_toast', 'information_schema')"
-    
+
     relation_names_filter = ""
     if relation_names:
         relation_names_str = ', '.join([f"\'{relation_name}\'::regclass::oid" for relation_name in relation_names])
@@ -408,10 +488,32 @@ def export_statistics(cursor, schemas, relation_names, out_dir):
         else:
             break
     statistics_dict['pg_statistic'] = list_pg_statistic
-    statistics_json = json.dumps(statistics_dict, indent=4, cls=CustomIndentEncoder)
+    statistics_json_str = json.dumps(statistics_dict, indent=4, cls=CustomIndentEncoder)
+    statistics_json = json.loads(statistics_json_str)
 
-    with open(statistics_file_name, 'w') as statistics_file:
-        statistics_file.write(statistics_json)
+    with open(statistics_json_file_name, 'w') as statistics_json_file:
+        statistics_json_file.write(statistics_json_str)
+
+    with open(import_statistics_sql_file_name, 'w') as import_statistics_sql_file:
+        if args.yb_mode:
+            import_statistics_sql_file.write('SET yb_non_ddl_txn_for_sys_tables_allowed = ON;\n\n')
+
+        for pg_class_row_json in statistics_json['pg_class']:
+            query = f'''\
+UPDATE pg_class SET reltuples = {pg_class_row_json["reltuples"]}, \
+relpages = {pg_class_row_json["relpages"]}, relallvisible = {pg_class_row_json["relallvisible"]} \
+WHERE relnamespace = \'{pg_class_row_json["nspname"]}\'::regnamespace AND \
+(relname = \'{pg_class_row_json["relname"]}\' OR relname = '{pg_class_row_json["relname"]}_pkey');
+'''
+            import_statistics_sql_file.write(query)
+
+        for pg_statistic_row_json in statistics_json['pg_statistic']:
+            query = get_pg_statatistic_insert_query(pg_statistic_row_json)
+            import_statistics_sql_file.write(query)
+
+        if args.yb_mode:
+            import_statistics_sql_file.write('\nupdate pg_yb_catalog_version set current_version=current_version+1 where db_oid=1;\n')
+            import_statistics_sql_file.write('SET yb_non_ddl_txn_for_sys_tables_allowed = OFF;\n')
 
 
 def export_overridden_gucs(cursor, out_dir):
@@ -473,14 +575,14 @@ def main():
     if args.query_file is not None:
         relation_names = get_relation_names_in_query(cursor, args.query_file)
         export_query_file(args.query_file, out_dir_abs_path)
-        export_query_plan(cursor, args.query_file, out_dir_abs_path, args.enable_optimizer_statistics)
+        export_query_plan(cursor, args.query_file, out_dir_abs_path, args.enable_base_scans_cost_model)
     set_extra_float_digits(cursor, 3)
     extract_ddl(connection_dict, args.schemas, relation_names, out_dir_abs_path, args.yb_mode)
-    export_statistics(cursor, args.schemas, relation_names, out_dir_abs_path)
+    export_statistics(args, cursor, args.schemas, relation_names, out_dir_abs_path)
     export_version(cursor, out_dir_abs_path)
     export_overridden_gucs(cursor, out_dir_abs_path)
     if args.yb_mode:
-        
+
         export_gflags(args.host, out_dir_abs_path)
     cursor.close()
     conn.close()

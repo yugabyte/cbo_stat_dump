@@ -115,19 +115,22 @@ def connect_test_database(args, test_db_name):
     test_cursor = test_conn.cursor()
     return test_conn, test_cursor
 
-def export_query_plan(args, test_db_name, query_file, outdir):
+def export_query_plan(args, test_db_name, overridden_gucs_file, query_file, outdir):
     query_plan_file_name = outdir + '/sim_query_plan.txt'
     logger.debug("Exporting query plan to %s" % query_plan_file_name)
+    sql_text = ""
+    if os.path.exists(overridden_gucs_file):
+        with open(overridden_gucs_file, 'r') as gucs_f:
+            sql_text += gucs_f.read()    
     with open(query_file, 'r') as sql_f:
-        sql_text = sql_f.read()
+        sql_text += 'EXPLAIN ' + sql_f.read()
 
-    explain_query = "EXPLAIN %s" % sql_text
     test_conn, test_cursor = connect_test_database(args, test_db_name)
     if args.enable_base_scans_cost_model and args.yb_mode:
         test_cursor.execute('SET yb_enable_base_scans_cost_model=ON')
     if not args.yb_mode:
         test_cursor.execute('SET enable_cbo_statistics_simulation=ON')
-    test_cursor.execute(explain_query)
+    test_cursor.execute(sql_text)
     query_plan = test_cursor.fetchall()
     with open(query_plan_file_name, 'w') as query_plan_file:
         for tuple in query_plan:
@@ -331,7 +334,7 @@ def main():
             run_sql_on_test_database(args, test_db_name, query_outdir + '/ddl.sql')
             run_sql_on_test_database(args, test_db_name, query_outdir + '/import_statistics.sql')
             sleep(0.1)
-            export_query_plan(args, test_db_name, query_file_name_abs, query_outdir)
+            export_query_plan(args, test_db_name, query_outdir + '/overridden_gucs.sql', query_file_name_abs, query_outdir)
             if not query_plans_match(query_outdir):
                 failed_queries.append([query_file_name, query_outdir + '/query_plan_diff.txt'])
             drop_database(Host.TEST, args, test_db_name)

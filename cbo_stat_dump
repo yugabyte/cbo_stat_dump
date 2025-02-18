@@ -30,7 +30,9 @@ QUERY_FILE_NAME = 'query.sql'
 DDL_FILE_NAME = 'ddl.sql'
 QUERY_PLAN_FILE_NAME = 'query_plan.txt'
 STATISTICS_JSON_FILE_NAME = 'statistics.json'
+STATISTIC_EXT_JSON_FILE_NAME = 'statistic_ext.json'
 IMPORT_STATISTICS_SQL_FILE_NAME = 'import_statistics.sql'
+IMPORT_STATISTIC_EXT_SQL_FILE_NAME = 'import_statistics_ext.sql'
 OVERRIDDEN_GUCS_FILE_NAME = 'overridden_gucs.sql'
 GFLAGS_FILE_NAME = 'gflags.json'
 VERSION_FILE_NAME = 'version.txt'
@@ -405,6 +407,79 @@ INSERT INTO pg_statistic VALUES ({starelid}, {staattnum_subquery}{columnValues})
     return query
 
 
+def export_extended_statistics(args, cursor, schemas, relation_names, out_dir):
+    statistic_ext_json_file_name = f'{out_dir}/{STATISTIC_EXT_JSON_FILE_NAME}'
+    import_statistic_ext_sql_file_name = f'{out_dir}/{IMPORT_STATISTIC_EXT_SQL_FILE_NAME}'
+
+    logger.debug(f"Exporting data from pg_statistic_ext and pg_statistic_ext_data to file {statistic_ext_json_file_name}")
+    statistic_ext_dict = {}
+    
+    statistic_ext_dict['version'] = __version__
+    
+    schemas_filter = ""
+    if schemas:
+        schemas_str = ', '.join([f"\'{schema.strip()}\'" for schema in schemas])
+        schemas_filter = f" and n.nspname in ({schemas_str}) "
+    else:
+        schemas_filter = " and n.nspname not in ('pg_catalog', 'pg_toast', 'information_schema')"
+
+    relation_names_filter = ""
+    if relation_names:
+        relation_names_str = ', '.join([f"\'{relation_name}\'::regclass::oid" for relation_name in relation_names])
+        relation_names_filter = f" and (c.oid in ({relation_names_str}) or c.oid in (select indexrelid from pg_index where indrelid in ({relation_names_str}))) "
+        
+    query = f"""
+        SELECT row_to_json(t) FROM 
+            (SELECT c.relname, s.stxname, n.nspname, s.stxowner, s.stxstattarget, string_agg(a.attname, ',') as stxkeys, s.stxkind, s.stxexprs 
+             FROM 
+                pg_class c 
+                JOIN pg_statistic_ext s ON c.oid = s.stxrelid 
+                JOIN pg_attribute a ON c.oid = a.attrelid AND a.attnum = ANY(s.stxkeys)
+                JOIN pg_namespace n ON c.relnamespace = n.oid {schemas_filter} {relation_names_filter}
+                GROUP BY c.relname, s.stxname, n.nspname, s.stxowner, s.stxstattarget, s.stxkind, s.stxexprs) t"""
+    cursor.execute(query)
+    rows_pg_statistic_ext = cursor.fetchall()
+    list_pg_statistic_ext = [NoIndent(row[0]) for row in rows_pg_statistic_ext]
+    statistic_ext_dict['pg_statistic_ext'] = list_pg_statistic_ext
+    
+    query = f"""
+        SELECT row_to_json(t) FROM 
+            (SELECT s.stxname, d.stxdinherit, d.stxdndistinct, d.stxddependencies, d.stxdmcv, d.stxdexpr
+                FROM
+                    pg_statistic_ext s JOIN pg_statistic_ext_data d ON s.oid = d.stxoid) t"""
+    cursor.execute(query)
+    rows_pg_statistic_ext_data = cursor.fetchall()
+    dict_statistic_ext_to_data = {}
+    for row in rows_pg_statistic_ext_data:
+        dict_statistic_ext_to_data[row[0]['stxname']] = row[0]
+    list_pg_statistic_ext_data = [NoIndent(row[0]) for row in rows_pg_statistic_ext_data]
+    statistic_ext_dict['pg_statistic_ext_data'] = list_pg_statistic_ext_data
+    
+    statistic_ext_json_str = json.dumps(statistic_ext_dict, indent=4, cls=CustomIndentEncoder)
+    statistic_ext_json = json.loads(statistic_ext_json_str)
+
+    with open(statistic_ext_json_file_name, 'w') as statistics_json_file:
+        statistics_json_file.write(statistic_ext_json_str)
+
+    with open(import_statistic_ext_sql_file_name, 'w') as import_statistics_sql_file:
+        if args.yb_mode:
+            import_statistics_sql_file.write('SET yb_non_ddl_txn_for_sys_tables_allowed = ON;\n\n')
+
+        for pg_statistic_ext_data_row_json in statistic_ext_json['pg_statistic_ext_data']:
+            stxdndistinct = pg_statistic_ext_data_row_json['stxdndistinct'] if pg_statistic_ext_data_row_json['stxdndistinct'] is not None else 'NULL'
+            stxddependencies = pg_statistic_ext_data_row_json['stxddependencies'] if pg_statistic_ext_data_row_json['stxddependencies'] is not None else 'NULL'
+            stxdmcv = pg_statistic_ext_data_row_json['stxdmcv'] if pg_statistic_ext_data_row_json['stxdmcv'] is not None else 'NULL'
+            stxdexpr = pg_statistic_ext_data_row_json['stxdexpr'] if pg_statistic_ext_data_row_json['stxdexpr'] is not None else 'NULL'
+            
+            query = f"""\
+INSERT INTO pg_statistic_ext_data VALUES ((SELECT stxoid FROM pg_statistics_ext WHERE stxname='{pg_statistic_ext_data_row_json['stxname']}'), {pg_statistic_ext_data_row_json['stxdinherit']}, {stxdndistinct}, {stxddependencies}, {stxdmcv}, {stxdexpr});\n"""
+            import_statistics_sql_file.write(query)
+
+        if args.yb_mode:
+            import_statistics_sql_file.write('\nupdate pg_yb_catalog_version set current_version=current_version+1 where db_oid=1;\n')
+            import_statistics_sql_file.write('SET yb_non_ddl_txn_for_sys_tables_allowed = OFF;\n')
+
+
 def export_statistics(args, cursor, schemas, relation_names, out_dir):
     statistics_json_file_name = f'{out_dir}/{STATISTICS_JSON_FILE_NAME}'
     import_statistics_sql_file_name = f'{out_dir}/{IMPORT_STATISTICS_SQL_FILE_NAME}'
@@ -424,14 +499,13 @@ def export_statistics(args, cursor, schemas, relation_names, out_dir):
     relation_names_filter = ""
     if relation_names:
         relation_names_str = ', '.join([f"\'{relation_name}\'::regclass::oid" for relation_name in relation_names])
-        # relation_names_filter = f" and c.oid in ({relation_names_str}) "
         relation_names_filter = f" and (c.oid in ({relation_names_str}) or c.oid in (select indexrelid from pg_index where indrelid in ({relation_names_str}))) "
+
     query = f"""
         SELECT row_to_json(t) FROM
             (SELECT c.relname, c.relpages, c.reltuples, c.relallvisible, n.nspname
                 FROM pg_class c JOIN pg_namespace n on c.relnamespace = n.oid {schemas_filter} {relation_names_filter}) t
         """
-
     cursor.execute(query)
     rows_pg_class = cursor.fetchall()
     list_pg_class = [NoIndent(row[0]) for row in rows_pg_class]
@@ -579,6 +653,7 @@ def main():
     set_extra_float_digits(cursor, 3)
     extract_ddl(connection_dict, args.schemas, relation_names, out_dir_abs_path, args.yb_mode)
     export_statistics(args, cursor, args.schemas, relation_names, out_dir_abs_path)
+    export_extended_statistics(args, cursor, args.schemas, relation_names, out_dir_abs_path)
     export_version(cursor, out_dir_abs_path)
     export_overridden_gucs(cursor, out_dir_abs_path)
     if args.yb_mode:

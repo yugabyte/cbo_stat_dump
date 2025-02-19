@@ -260,7 +260,6 @@ def extract_ddl(connection_dict, schemas, relation_names, output_dir, yb_mode):
             for line in ddl_tmp_file:
                 if line.strip():
                     m = re.match("(?:^--)|(?:^SET)|(?:^SELECT pg_catalog)|(?:^ALTER .+ OWNER TO)|(?:^CREATE SCHEMA public;$)", line)
-
                     if m is None:
                         ddl_file.write(line)
         ddl_file.write('\n')

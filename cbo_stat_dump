@@ -405,7 +405,7 @@ def export_extended_statistics(args, cursor, schemas, relation_names, out_dir):
     statistic_ext_json_file_name = f'{out_dir}/{STATISTIC_EXT_JSON_FILE_NAME}'
     import_statistic_ext_sql_file_name = f'{out_dir}/{IMPORT_STATISTIC_EXT_SQL_FILE_NAME}'
 
-    logger.debug(f"Exporting data from pg_statistic_ext and pg_statistic_ext_data to file {statistic_ext_json_file_name}")
+    logger.debug(f"Exporting data from pg_statistic_ext to file {statistic_ext_json_file_name}")
     statistic_ext_dict = {}
     
     statistic_ext_dict['version'] = __version__
@@ -424,31 +424,16 @@ def export_extended_statistics(args, cursor, schemas, relation_names, out_dir):
         
     query = f"""
         SELECT row_to_json(t) FROM 
-            (SELECT c.relname, s.stxname, n.nspname, s.stxowner, s.stxstattarget, string_agg(a.attname, ',') as stxkeys, s.stxkind, s.stxexprs 
+            (SELECT c.relname, s.stxname, n.nspname, s.stxowner, s.stxkeys, s.stxkind, s.stxndistinct, s.stxdependencies
              FROM 
                 pg_class c 
                 JOIN pg_statistic_ext s ON c.oid = s.stxrelid 
-                JOIN pg_attribute a ON c.oid = a.attrelid AND a.attnum = ANY(s.stxkeys)
-                JOIN pg_namespace n ON c.relnamespace = n.oid {schemas_filter} {relation_names_filter}
-                GROUP BY c.relname, s.stxname, n.nspname, s.stxowner, s.stxstattarget, s.stxkind, s.stxexprs) t"""
+                JOIN pg_namespace n ON c.relnamespace = n.oid {schemas_filter} {relation_names_filter}) t"""
     cursor.execute(query)
     rows_pg_statistic_ext = cursor.fetchall()
     list_pg_statistic_ext = [NoIndent(row[0]) for row in rows_pg_statistic_ext]
     statistic_ext_dict['pg_statistic_ext'] = list_pg_statistic_ext
-    
-    query = f"""
-        SELECT row_to_json(t) FROM 
-            (SELECT s.stxname, d.stxdinherit, d.stxdndistinct::bytea, d.stxddependencies::bytea, d.stxdmcv::bytea, d.stxdexpr
-                FROM
-                    pg_statistic_ext s JOIN pg_statistic_ext_data d ON s.oid = d.stxoid) t"""
-    cursor.execute(query)
-    rows_pg_statistic_ext_data = cursor.fetchall()
-    dict_statistic_ext_to_data = {}
-    for row in rows_pg_statistic_ext_data:
-        dict_statistic_ext_to_data[row[0]['stxname']] = row[0]
-    list_pg_statistic_ext_data = [NoIndent(row[0]) for row in rows_pg_statistic_ext_data]
-    statistic_ext_dict['pg_statistic_ext_data'] = list_pg_statistic_ext_data
-    
+
     statistic_ext_json_str = json.dumps(statistic_ext_dict, indent=4, cls=CustomIndentEncoder)
     statistic_ext_json = json.loads(statistic_ext_json_str)
 
@@ -459,36 +444,13 @@ def export_extended_statistics(args, cursor, schemas, relation_names, out_dir):
         if args.yb_mode:
             import_statistics_sql_file.write('SET yb_non_ddl_txn_for_sys_tables_allowed = ON;\n\n')
 
-        for pg_statistic_ext_data_row_json in statistic_ext_json['pg_statistic_ext_data']:
-            stxdndistinct = ("'" + pg_statistic_ext_data_row_json['stxdndistinct'] + "'::bytea") if pg_statistic_ext_data_row_json['stxdndistinct'] is not None else 'NULL'
-            stxddependencies = ("'" + pg_statistic_ext_data_row_json['stxddependencies'] + "'::bytea") if pg_statistic_ext_data_row_json['stxddependencies'] is not None else 'NULL'
-            stxdmcv = ("'" + pg_statistic_ext_data_row_json['stxdmcv'] + "'::bytea") if pg_statistic_ext_data_row_json['stxdmcv'] is not None else 'NULL'
-            
-            stxdexpr = pg_statistic_ext_data_row_json['stxdexpr']
-            if (stxdexpr is not None):
-                value_str = "ARRAY["
-                for statistic in stxdexpr:
-                    value_str += '('
-                    for key, value in statistic.items():
-                        if (value == None):
-                            value_str += 'NULL, '
-                        else:
-                            if isinstance(value, list):
-                                if (key.startswith('stanumbers')):
-                                    value_str += f"ARRAY[{','.join(map(str,value))}]::real[], "
-                                elif (key.startswith('stavalues')):
-                                    value_str += f"array_in('{{{','.join(map(str,value))}}}', 'pg_catalog.int4'::regtype, -1)::anyarray, "
-                            else:
-                                value_str += f"'{value}', "
-                    value_str = value_str[:-2] + '), '
-                value_str = value_str[:-2] + ']::pg_statistic[]'
-                stxdexpr = value_str
-            else:
-                stxdexpr = 'NULL'
+        for pg_statistic_ext_row_json in statistic_ext_json['pg_statistic_ext']:
+            stxndistinct = ("'" + pg_statistic_ext_row_json['stxndistinct'] + "'::bytea") if pg_statistic_ext_row_json['stxndistinct'] is not None else 'NULL'
+            stxdependencies = ("'" + pg_statistic_ext_row_json['stxdependencies'] + "'::bytea") if pg_statistic_ext_row_json['stxdependencies'] is not None else 'NULL'
 
             query = f"""\
-DELETE FROM pg_statistic_ext_data WHERE stxoid = (SELECT oid FROM pg_statistic_ext WHERE stxname='{pg_statistic_ext_data_row_json['stxname']}');
-INSERT INTO pg_statistic_ext_data VALUES ((SELECT oid FROM pg_statistic_ext WHERE stxname='{pg_statistic_ext_data_row_json['stxname']}'), {pg_statistic_ext_data_row_json['stxdinherit']}, {stxdndistinct}, {stxddependencies}, {stxdmcv}, {stxdexpr});\n"""
+DELETE FROM pg_statistic_ext WHERE stxname = '{pg_statistic_ext_row_json['stxname']}';
+INSERT INTO pg_statistic_ext VALUES ((SELECT oid FROM pg_class WHERE relname='{pg_statistic_ext_row_json['relname']}'), {pg_statistic_ext_row_json['stxname']}, (SELECT oid FROM pg_namespace WHERE nspname='{pg_statistic_ext_row_json['nspname']}'), '{pg_statistic_ext_row_json['stxowner']}', '{pg_statistic_ext_row_json['stxkeys']}', {stxndistinct}, {stxdependencies});\n"""
             import_statistics_sql_file.write(query)
 
         if args.yb_mode:

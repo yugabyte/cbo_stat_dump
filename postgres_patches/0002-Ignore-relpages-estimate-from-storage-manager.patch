@@ -1,0 +1,117 @@
+From e19fedb06daff01fb890c1e09115cfa97fc662ae Mon Sep 17 00:00:00 2001
+From: Gaurav Kukreja <gaurav@gauravk.in>
+Date: Fri, 28 Feb 2025 23:34:30 +0100
+Subject: [PATCH 2/2] Ignore relpages estimate from storage manager
+
+Instead of relying on reltuples estimate in pg_class for query planning,
+we try to find an up-to-date estimate of relpages from the storage
+manager and extrapolate the current reltuples from the values available
+in statistics.
+
+In order to reproduce query planner issues encountered in production
+instance, we want to allow importing statistics to a test cluster so
+that query planner can be forced to make same plan choices. For this
+purpose, we must disable this feature.
+
+With this change, this feature can be disabled by enabling the GUC
+`enable_cbo_statistics_simulation`.
+---
+ src/backend/storage/buffer/bufmgr.c | 35 ++++++++++++++++++++---------
+ src/backend/utils/misc/guc_tables.c | 10 +++++++++
+ src/include/storage/bufmgr.h        |  1 +
+ 3 files changed, 36 insertions(+), 10 deletions(-)
+
+diff --git a/src/backend/storage/buffer/bufmgr.c b/src/backend/storage/buffer/bufmgr.c
+index 0d8849bf89..4afa6161c5 100644
+--- a/src/backend/storage/buffer/bufmgr.c
++++ b/src/backend/storage/buffer/bufmgr.c
+@@ -141,6 +141,7 @@ bool		zero_damaged_pages = false;
+ int			bgwriter_lru_maxpages = 100;
+ double		bgwriter_lru_multiplier = 2.0;
+ bool		track_io_timing = false;
++bool		enable_cbo_statistics_simulation = false;
+ 
+ /*
+  * How many buffers PrefetchBuffer callers should try to stay ahead of their
+@@ -3924,21 +3925,35 @@ RelationGetNumberOfBlocksInFork(Relation relation, ForkNumber forkNum)
+ {
+ 	if (RELKIND_HAS_TABLE_AM(relation->rd_rel->relkind))
+ 	{
+-		/*
+-		 * Not every table AM uses BLCKSZ wide fixed size blocks. Therefore
+-		 * tableam returns the size in bytes - but for the purpose of this
+-		 * routine, we want the number of blocks. Therefore divide, rounding
+-		 * up.
+-		 */
+-		uint64		szbytes;
++		if (enable_cbo_statistics_simulation)
++		{
++			return relation->rd_rel->relpages;
++		}
++		else
++		{
++			/*
++			* Not every table AM uses BLCKSZ wide fixed size blocks. Therefore
++			* tableam returns the size in bytes - but for the purpose of this
++			* routine, we want the number of blocks. Therefore divide, rounding
++			* up.
++			*/
++			uint64		szbytes;
+ 
+-		szbytes = table_relation_size(relation, forkNum);
++			szbytes = table_relation_size(relation, forkNum);
+ 
+-		return (szbytes + (BLCKSZ - 1)) / BLCKSZ;
++			return (szbytes + (BLCKSZ - 1)) / BLCKSZ;
++		}
+ 	}
+ 	else if (RELKIND_HAS_STORAGE(relation->rd_rel->relkind))
+ 	{
+-		return smgrnblocks(RelationGetSmgr(relation), forkNum);
++		if (enable_cbo_statistics_simulation)
++		{
++			return relation->rd_rel->relpages;
++		}
++		else
++		{
++			return smgrnblocks(RelationGetSmgr(relation), forkNum);
++		}
+ 	}
+ 	else
+ 		Assert(false);
+diff --git a/src/backend/utils/misc/guc_tables.c b/src/backend/utils/misc/guc_tables.c
+index 38cb9e970d..b2dc0f89c8 100644
+--- a/src/backend/utils/misc/guc_tables.c
++++ b/src/backend/utils/misc/guc_tables.c
+@@ -1823,6 +1823,16 @@ struct config_bool ConfigureNamesBool[] =
+ 		true,
+ 		NULL, NULL, NULL
+ 	},
++	
++	{
++		{"enable_cbo_statistics_simulation", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
++			gettext_noop("Enable statistics simulation for CBO."),
++			NULL
++		},
++		&enable_cbo_statistics_simulation,
++		false,
++		NULL, NULL, NULL
++	},
+ 
+ 	{
+ 		{"recovery_target_inclusive", PGC_POSTMASTER, WAL_RECOVERY_TARGET,
+diff --git a/src/include/storage/bufmgr.h b/src/include/storage/bufmgr.h
+index 46b4e0d90f..517eaf8472 100644
+--- a/src/include/storage/bufmgr.h
++++ b/src/include/storage/bufmgr.h
+@@ -149,6 +149,7 @@ extern PGDLLIMPORT bool zero_damaged_pages;
+ extern PGDLLIMPORT int bgwriter_lru_maxpages;
+ extern PGDLLIMPORT double bgwriter_lru_multiplier;
+ extern PGDLLIMPORT bool track_io_timing;
++extern PGDLLIMPORT bool enable_cbo_statistics_simulation;
+ 
+ /* only applicable when prefetching is available */
+ #ifdef USE_PREFETCH
+-- 
+2.39.5 (Apple Git-154)
+

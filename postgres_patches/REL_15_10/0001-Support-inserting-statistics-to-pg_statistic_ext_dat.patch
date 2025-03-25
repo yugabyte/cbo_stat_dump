@@ -1,0 +1,115 @@
+From 194509e05c35388675457f3c745b65b41a14dbf4 Mon Sep 17 00:00:00 2001
+From: Gaurav Kukreja <gaurav@gauravk.in>
+Date: Fri, 28 Feb 2025 23:48:15 +0100
+Subject: [PATCH 1/2] Support inserting statistics to pg_statistic_ext_data
+
+To reproduce complex query planning issues encountered in production
+instances, we want to allow importing statistcs to a test cluster. This
+can force the query planner to make the same plan choices.
+
+With this change, we support inserting data to `pg_statistic_ext_data`
+system catalog. This should be avoided in production environment.
+---
+ src/backend/statistics/dependencies.c | 11 +++--------
+ src/backend/statistics/mcv.c          | 11 +++--------
+ src/backend/statistics/mvdistinct.c   |  7 +++----
+ src/include/catalog/pg_cast.dat       |  6 ++++++
+ 4 files changed, 15 insertions(+), 20 deletions(-)
+
+diff --git a/src/backend/statistics/dependencies.c b/src/backend/statistics/dependencies.c
+index 0d0644c365..81be162a39 100644
+--- a/src/backend/statistics/dependencies.c
++++ b/src/backend/statistics/dependencies.c
+@@ -654,15 +654,10 @@ statext_dependencies_load(Oid mvoid, bool inh)
+ Datum
+ pg_dependencies_in(PG_FUNCTION_ARGS)
+ {
+-	/*
+-	 * pg_node_list stores the data in binary form and parsing text input is
+-	 * not needed, so disallow this.
+-	 */
+-	ereport(ERROR,
+-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+-			 errmsg("cannot accept a value of type %s", "pg_dependencies")));
++	bytea	   *data = PG_GETARG_BYTEA_P(0);
++	MVDependencies *dependencies = statext_dependencies_deserialize(data);
+ 
+-	PG_RETURN_VOID();			/* keep compiler quiet */
++	PG_RETURN_POINTER(dependencies);
+ }
+ 
+ /*
+diff --git a/src/backend/statistics/mcv.c b/src/backend/statistics/mcv.c
+index 6d9a098479..4184ef9e7d 100644
+--- a/src/backend/statistics/mcv.c
++++ b/src/backend/statistics/mcv.c
+@@ -1475,15 +1475,10 @@ pg_stats_ext_mcvlist_items(PG_FUNCTION_ARGS)
+ Datum
+ pg_mcv_list_in(PG_FUNCTION_ARGS)
+ {
+-	/*
+-	 * pg_mcv_list stores the data in binary form and parsing text input is
+-	 * not needed, so disallow this.
+-	 */
+-	ereport(ERROR,
+-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+-			 errmsg("cannot accept a value of type %s", "pg_mcv_list")));
++	bytea	   *data = PG_GETARG_BYTEA_P(0);
++	MCVList	   *mcvlist = statext_mcv_deserialize(data);
+ 
+-	PG_RETURN_VOID();			/* keep compiler quiet */
++	PG_RETURN_POINTER(mcvlist);
+ }
+ 
+ 
+diff --git a/src/backend/statistics/mvdistinct.c b/src/backend/statistics/mvdistinct.c
+index 9b216af517..04eed952a3 100644
+--- a/src/backend/statistics/mvdistinct.c
++++ b/src/backend/statistics/mvdistinct.c
+@@ -339,11 +339,10 @@ statext_ndistinct_deserialize(bytea *data)
+ Datum
+ pg_ndistinct_in(PG_FUNCTION_ARGS)
+ {
+-	ereport(ERROR,
+-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+-			 errmsg("cannot accept a value of type %s", "pg_ndistinct")));
++	bytea	   *data = PG_GETARG_BYTEA_P(0);
++	MVNDistinct *ndist = statext_ndistinct_deserialize(data);
+ 
+-	PG_RETURN_VOID();			/* keep compiler quiet */
++	PG_RETURN_POINTER(ndist);
+ }
+ 
+ /*
+diff --git a/src/include/catalog/pg_cast.dat b/src/include/catalog/pg_cast.dat
+index 4471eb6bbe..57ff300223 100644
+--- a/src/include/catalog/pg_cast.dat
++++ b/src/include/catalog/pg_cast.dat
+@@ -335,18 +335,24 @@
+   castcontext => 'i', castmethod => 'b' },
+ { castsource => 'pg_ndistinct', casttarget => 'text', castfunc => '0',
+   castcontext => 'i', castmethod => 'i' },
++{ castsource => 'bytea', casttarget => 'pg_ndistinct', castfunc => '0',
++  castcontext => 'i', castmethod => 'b' },
+ 
+ # pg_dependencies can be coerced to, but not from, bytea and text
+ { castsource => 'pg_dependencies', casttarget => 'bytea', castfunc => '0',
+   castcontext => 'i', castmethod => 'b' },
+ { castsource => 'pg_dependencies', casttarget => 'text', castfunc => '0',
+   castcontext => 'i', castmethod => 'i' },
++{ castsource => 'bytea', casttarget => 'pg_dependencies', castfunc => '0',
++  castcontext => 'i', castmethod => 'b' },
+ 
+ # pg_mcv_list can be coerced to, but not from, bytea and text
+ { castsource => 'pg_mcv_list', casttarget => 'bytea', castfunc => '0',
+   castcontext => 'i', castmethod => 'b' },
+ { castsource => 'pg_mcv_list', casttarget => 'text', castfunc => '0',
+   castcontext => 'i', castmethod => 'i' },
++{ castsource => 'bytea', casttarget => 'pg_mcv_list', castfunc => '0',
++  castcontext => 'i', castmethod => 'b' },
+ 
+ # Datetime category
+ { castsource => 'date', casttarget => 'timestamp',
+-- 
+2.39.5 (Apple Git-154)
+

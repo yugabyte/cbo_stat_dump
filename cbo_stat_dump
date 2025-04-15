@@ -626,7 +626,7 @@ def main():
     set_extra_float_digits(cursor, 3)
     extract_ddl(connection_dict, args.schemas, relation_names, out_dir_abs_path, args.yb_mode)
     export_statistics(args, cursor, args.schemas, relation_names, out_dir_abs_path)
-    export_extended_statistics(args, cursor, args.schemas, relation_names, out_dir_abs_path)
+    # export_extended_statistics(args, cursor, args.schemas, relation_names, out_dir_abs_path)
     export_version(cursor, out_dir_abs_path)
     export_overridden_gucs(cursor, out_dir_abs_path)
     if args.yb_mode:

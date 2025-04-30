@@ -228,8 +228,8 @@ def extract_ddl(connection_dict, schemas, relation_names, output_dir, yb_mode):
     if yb_mode:
         DDL_DUMP_BIN = YSQL_DUMP_BIN
     if not shutil.which(DDL_DUMP_BIN):
-        logger.fatal(f"{DDL_DUMP_BIN} binary not found.\n\n")
-        sys.exit(1)
+        logger.warning(f"{DDL_DUMP_BIN} binary not found in PATH. Skipping exporting DDL.\n\n")
+        return
 
     ddl_file_name = f'{output_dir}/{DDL_FILE_NAME}'
     logger.debug(f"Exporting DDL to {ddl_file_name}")
@@ -328,31 +328,52 @@ class CustomIndentEncoder(json.JSONEncoder):
 
         return json_repr
 
-def get_pg_statatistic_insert_query(stat_json):
-    columnTypes = { "stainherit": "boolean",
-                    "stanullfrac": "real",
-                    "stawidth": "integer",
-                    "stadistinct": "real",
-                    "stakind1": "smallint",
-                    "stakind2": "smallint",
-                    "stakind3": "smallint",
-                    "stakind4": "smallint",
-                    "stakind5": "smallint",
-                    "staop1": "oid",
-                    "staop2": "oid",
-                    "staop3": "oid",
-                    "staop4": "oid",
-                    "staop5": "oid",
-                    "stacoll1": "oid",
-                    "stacoll2": "oid",
-                    "stacoll3": "oid",
-                    "stacoll4": "oid",
-                    "stacoll5": "oid",
-                    "stanumbers1": "real[]",
-                    "stanumbers2": "real[]",
-                    "stanumbers3": "real[]",
-                    "stanumbers4": "real[]",
-                    "stanumbers5": "real[]"}
+def get_pg_statatistic_insert_query(pg_major_version, stat_json):
+    if (pg_major_version < 15):
+        columnTypes = { "stainherit": "boolean",
+                        "stanullfrac": "real",
+                        "stawidth": "integer",
+                        "stadistinct": "real",
+                        "stakind1": "smallint",
+                        "stakind2": "smallint",
+                        "stakind3": "smallint",
+                        "stakind4": "smallint",
+                        "stakind5": "smallint",
+                        "staop1": "oid",
+                        "staop2": "oid",
+                        "staop3": "oid",
+                        "staop4": "oid",
+                        "staop5": "oid",
+                        "stanumbers1": "real[]",
+                        "stanumbers2": "real[]",
+                        "stanumbers3": "real[]",
+                        "stanumbers4": "real[]",
+                        "stanumbers5": "real[]"}
+    else:
+        columnTypes = { "stainherit": "boolean",
+                        "stanullfrac": "real",
+                        "stawidth": "integer",
+                        "stadistinct": "real",
+                        "stakind1": "smallint",
+                        "stakind2": "smallint",
+                        "stakind3": "smallint",
+                        "stakind4": "smallint",
+                        "stakind5": "smallint",
+                        "staop1": "oid",
+                        "staop2": "oid",
+                        "staop3": "oid",
+                        "staop4": "oid",
+                        "staop5": "oid",
+                        "stacoll1": "oid",
+                        "stacoll2": "oid",
+                        "stacoll3": "oid",
+                        "stacoll4": "oid",
+                        "stacoll5": "oid",
+                        "stanumbers1": "real[]",
+                        "stanumbers2": "real[]",
+                        "stanumbers3": "real[]",
+                        "stanumbers4": "real[]",
+                        "stanumbers5": "real[]"}
 
     if 'typnspname' not in stat_json:
         stavaluesType = 'pg_catalog'
@@ -501,7 +522,7 @@ INSERT INTO pg_statistic_ext_data VALUES ((SELECT oid FROM pg_statistic_ext WHER
             import_statistics_sql_file.write('SET yb_non_ddl_txn_for_sys_tables_allowed = OFF;\n')
 
 
-def export_statistics(args, cursor, schemas, relation_names, out_dir):
+def export_statistics(args, cursor, pg_major_version, schemas, relation_names, out_dir):
     statistics_json_file_name = f'{out_dir}/{STATISTICS_JSON_FILE_NAME}'
     import_statistics_sql_file_name = f'{out_dir}/{IMPORT_STATISTICS_SQL_FILE_NAME}'
 
@@ -531,49 +552,90 @@ def export_statistics(args, cursor, schemas, relation_names, out_dir):
     rows_pg_class = cursor.fetchall()
     list_pg_class = [NoIndent(row[0]) for row in rows_pg_class]
     statistics_dict['pg_class'] = list_pg_class
-    query = f"""
-        SELECT row_to_json(t) FROM
-            (SELECT
-                n.nspname nspname,
-                c.relname relname,
-                a.attname attname,
-                (select nspname from pg_namespace where oid = t.typnamespace) typnspname,
-                t.typname typname,
-                s.stainherit,
-                s.stanullfrac,
-                s.stawidth,
-                s.stadistinct,
-                s.stakind1,
-                s.stakind2,
-                s.stakind3,
-                s.stakind4,
-                s.stakind5,
-                s.staop1,
-                s.staop2,
-                s.staop3,
-                s.staop4,
-                s.staop5,
-                s.stanumbers1,
-                s.stanumbers2,
-                s.stanumbers3,
-                s.stanumbers4,
-                s.stanumbers5,
-                s.stacoll1,
-                s.stacoll2,
-                s.stacoll3,
-                s.stacoll4,
-                s.stacoll5,
-                s.stavalues1,
-                s.stavalues2,
-                s.stavalues3,
-                s.stavalues4,
-                s.stavalues5
-                FROM pg_class c
-                    JOIN pg_namespace n on c.relnamespace = n.oid {schemas_filter} {relation_names_filter}
-                    JOIN pg_statistic s ON s.starelid = c.oid
-                    JOIN pg_attribute a ON c.oid = a.attrelid AND s.staattnum = a.attnum
-                    JOIN pg_type t ON a.atttypid = t.oid) t
-        """
+    query = ""
+    if pg_major_version < 15:
+        query = f"""
+            SELECT row_to_json(t) FROM
+                (SELECT
+                    n.nspname nspname,
+                    c.relname relname,
+                    a.attname attname,
+                    (select nspname from pg_namespace where oid = t.typnamespace) typnspname,
+                    t.typname typname,
+                    s.stainherit,
+                    s.stanullfrac,
+                    s.stawidth,
+                    s.stadistinct,
+                    s.stakind1,
+                    s.stakind2,
+                    s.stakind3,
+                    s.stakind4,
+                    s.stakind5,
+                    s.staop1,
+                    s.staop2,
+                    s.staop3,
+                    s.staop4,
+                    s.staop5,
+                    s.stanumbers1,
+                    s.stanumbers2,
+                    s.stanumbers3,
+                    s.stanumbers4,
+                    s.stanumbers5,
+                    s.stavalues1,
+                    s.stavalues2,
+                    s.stavalues3,
+                    s.stavalues4,
+                    s.stavalues5
+                    FROM pg_class c
+                        JOIN pg_namespace n on c.relnamespace = n.oid {schemas_filter} {relation_names_filter}
+                        JOIN pg_statistic s ON s.starelid = c.oid
+                        JOIN pg_attribute a ON c.oid = a.attrelid AND s.staattnum = a.attnum
+                        JOIN pg_type t ON a.atttypid = t.oid) t
+            """
+    else:
+        query = f"""
+            SELECT row_to_json(t) FROM
+                (SELECT
+                    n.nspname nspname,
+                    c.relname relname,
+                    a.attname attname,
+                    (select nspname from pg_namespace where oid = t.typnamespace) typnspname,
+                    t.typname typname,
+                    s.stainherit,
+                    s.stanullfrac,
+                    s.stawidth,
+                    s.stadistinct,
+                    s.stakind1,
+                    s.stakind2,
+                    s.stakind3,
+                    s.stakind4,
+                    s.stakind5,
+                    s.staop1,
+                    s.staop2,
+                    s.staop3,
+                    s.staop4,
+                    s.staop5,
+                    s.stanumbers1,
+                    s.stanumbers2,
+                    s.stanumbers3,
+                    s.stanumbers4,
+                    s.stanumbers5,
+                    s.stacoll1,
+                    s.stacoll2,
+                    s.stacoll3,
+                    s.stacoll4,
+                    s.stacoll5,
+                    s.stavalues1,
+                    s.stavalues2,
+                    s.stavalues3,
+                    s.stavalues4,
+                    s.stavalues5
+                    FROM pg_class c
+                        JOIN pg_namespace n on c.relnamespace = n.oid {schemas_filter} {relation_names_filter}
+                        JOIN pg_statistic s ON s.starelid = c.oid
+                        JOIN pg_attribute a ON c.oid = a.attrelid AND s.staattnum = a.attnum
+                        JOIN pg_type t ON a.atttypid = t.oid) t
+            """
 
     cursor.execute(query)
     list_pg_statistic = []
@@ -603,7 +665,7 @@ WHERE relnamespace = \'{pg_class_row_json["nspname"]}\'::regnamespace AND \
             import_statistics_sql_file.write(query)
 
         for pg_statistic_row_json in statistics_json['pg_statistic']:
-            query = get_pg_statatistic_insert_query(pg_statistic_row_json)
+            query = get_pg_statatistic_insert_query(pg_major_version, pg_statistic_row_json)
             import_statistics_sql_file.write(query)
 
         if args.yb_mode:
@@ -660,10 +722,18 @@ def set_extra_float_digits(cursor, digits):
     cursor.execute(f'SET extra_float_digits = {digits}')
 
 
+def get_pg_major_version(cursor):
+    cursor.execute("SELECT current_setting('server_version_num')")
+    version_num = cursor.fetchone()[0]
+    major_version = int(version_num[0:2])
+    return major_version
+
+
 def main():
     args = parse_cmd_line()
     connection_dict = get_connection_dict(args)
     conn, cursor = connect_database(connection_dict)
+    pg_major_version = get_pg_major_version(cursor)
     Path(args.out_dir).mkdir(parents=True, exist_ok=True)
     out_dir_abs_path = os.path.abspath(args.out_dir)
     relation_names = []
@@ -673,8 +743,9 @@ def main():
         export_query_plan(cursor, args.query_file, out_dir_abs_path, args.enable_base_scans_cost_model)
     set_extra_float_digits(cursor, 3)
     extract_ddl(connection_dict, args.schemas, relation_names, out_dir_abs_path, args.yb_mode)
-    export_statistics(args, cursor, args.schemas, relation_names, out_dir_abs_path)
-    export_extended_statistics(args, cursor, args.schemas, relation_names, out_dir_abs_path)
+    export_statistics(args, cursor, pg_major_version, args.schemas, relation_names, out_dir_abs_path)
+    if pg_major_version >= 15:
+        export_extended_statistics(args, cursor, args.schemas, relation_names, out_dir_abs_path)
     export_version(cursor, out_dir_abs_path)
     export_overridden_gucs(cursor, out_dir_abs_path)
     if args.yb_mode:

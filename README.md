@@ -1,48 +1,70 @@
 # Introduction
 
-The `cbo_stat_dump` script is used to extract all the information needed to
-reproduce a complex query planning issue encountered on a production environment
-running PostgreSQL. This information includes DDL, GUCs and statistics used by the 
-query planner. By creating empty tables and importing the statistics in a test 
-instance, we can force the query planner to make the same plan choices. This can
-be used to effectively debug issues and provide reliable solutions.
+The `cbo_stat_dump` script can be used to reproduce complex query planning
+issues encoundered in production environment running PostgreSQL or YugabyteDB.
 
-The query planner uses certain table and column level statistics to perform
-selectivity estimation. These statistics are available in system catalog tables
-`pg_class`, `pg_statistic`, `pg_statistic_ext` and `pg_statistic_ext_data`. This
-tool is able to extract the statistics from these tables. It exports this data
-in JSON format, and also generates SQL statements to import these statistics
-on a test instance.
+Debugging these issues in production environment could be very painful because
+of the complexity of the query planner and limited observability. Developers
+would need access to production environments which may contain sensitive data
+and debugging operations may affect active production use cases.
 
-Additionally the tool also exports DDL statements to recreate the table schema
-and values of GUC parameters relevant to query planner that have been overridden
-on the production environment.
+To pick an optimal execution plan, the Cost Based Optimizer aka. query planner
+uses table and column statistics to estimate the cost of executing a query. By
+replicating the schema and statistics in a test environment, we can force the
+query planner to make the same plan choice as in a large production environment,
+without having to replicate the actual production data.
+
+By being able to easily reproduce issues, developers will be able efficiently
+debug the problem and provide effective workarounds and resolutions.
+
+The `cbo_stat_dump` script exports all the information needed to reproduce
+a query planning issue. This primarily includes,
+* GUC parameters
+* Schema Definition
+* Statistics
 
 ## Note
 
-While no changes are needed on production environments, inserting to system
-catalog tables is not supported by default on vanilla PostgreSQL. PostgreSQL
-also does not recommend writing to system catalog tables due the risk of
-data corruption and unexpected outcomes. 
+No changes are needed in production environments to use this script. However 
+some patches may be needed in the test environment to import statistics.
 
-We may be able to tolerate these risks in a test environment. To allow inserting 
-statistics in system catalog tables, a patch needs to be applied to PG on the 
-test instance.
+### Force query planner to rely only on `reltuples` estimate in `pg_class`
 
-Moreover, an optimization included in PG15 onwards, make it harder to
-reproduce plans precisely. Instead of using `reltuples` in `pg_class` the query 
-planner takes the current number of blocks in the file containing the table and 
-extrapolates the value of reltuples. This means than on target system the query
-planner sees a different value of reltuples, than what is shown in `pg_class`.
-On the test system since the tables are actually empty, the `query_planner` 
-disregards the reltuples in pg_class and reports that the table has 0 rows.
+In PostgreSQL statistics are updated periodically. In between, statistics may
+become stale, which can lead to incorrect plan choices. In particular the size
+of the table may change rapidly and `reltuples` in `pg_class` may be out-dated.
+To mitigate this, a feature was implemented in PostgreSQL version 15 and onwards
+which estimates the number of tuples in a table by extrapolating `reltuples`
+from `pg_class` by checking the actual number of pages used by the table in
+the storage.
 
-The patch allows users to disable this optimization in test by enabling the GUC
-`enable_cbo_simulation`.
+In our test system, tables will be empty, so query planner would get an
+estimated row count of 0. A patch is needed to force the query planner to
+rely on the `reltuples` estimate in `pg_class`.
 
-This optimization may cause plans to be not exactly reproducible, because stats 
-may be stale on the target instance. If stats are up-to date we should be able 
-to reproduce the same query plans.
+The patch 
+`postgres_patches/master/0002-Ignore-relpages-estimate-from-storage-manager.patch`
+needs to be applied to vanilla PostgreSQL code to use on test systems.
+Additionally you must set the `enable_cbo_simulation` GUC to force the
+query planner to rely on `reltuples` in `pg_class`.
+
+Despite this patch, we may not be able to reproduce the exact same row
+estimates and costs as in production environment, however in most cases we
+should get the same execution plans as long as the statistics are not too 
+out-dated.
+
+This patch is not needed on earlier versions of PostgreSQL or YugabyteDB.
+
+### Extended Statistics
+
+Vanilla PostgreSQL does not allow inserting data to `pg_statistics_ext_data`
+system table. 
+
+If extended statistics are used in production envrironment, you must apply
+the patch 
+`postgres_patches/master/0001-Support-inserting-statistics-to-pg_statistic_ext_dat.patch`
+to allow inserting data to the extended statistics table. This patch is also
+needed in YugabyteDB.
 
 ## Exporting information from customer deployment
 
